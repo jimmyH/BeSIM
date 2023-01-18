@@ -43,10 +43,10 @@ To redirect the traffic to BeSIM you need to do one of the following:
 You should then see traffic arriving on BeSIM from your BeSMART device.
 
 You can then use the rest api to query the state, for example (replace 192.168.0.10 with the IP address of your BeSIM instance):
- - Get a list of connected devices: curl http://192.168.0.10/api/v1.0/devices
- - Get a list of rooms (thermostats) from the device: curl http://192.168.0.10/api/v1.0/devices/<deviceid>/rooms
- - Get the state of the thermostat: curl http://192.168.0.10/api/v1.0/devices/<deviceid>/rooms/<roomid>
- - Set T3 temperature (to 19.2degC): curl http://192.168.0.10/api/v1.0/devices/<deviceid>/rooms/<roomid>/t3 -H "Content-Type: application/json" -X PUT -d 192
+ - Get a list of connected devices: `curl http://192.168.0.10/api/v1.0/devices`
+ - Get a list of rooms (thermostats) from the device: `curl http://192.168.0.10/api/v1.0/devices/<deviceid>/rooms`
+ - Get the state of the thermostat: `curl http://192.168.0.10/api/v1.0/devices/<deviceid>/rooms/<roomid>`
+ - Set T3 temperature (to 19.2degC): `curl http://192.168.0.10/api/v1.0/devices/<deviceid>/rooms/<roomid>/t3 -H "Content-Type: application/json" -X PUT -d 192`
  - ... 
 
 
