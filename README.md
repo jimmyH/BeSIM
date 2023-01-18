@@ -25,4 +25,28 @@ This project is currently only a proof-of-concept implementation. Use at your ow
 It does not yet support:
  - Multiple thermostats
  - OpenTherm parameters when connected via OT
+ - There is no authentication on the rest api
+
+## How do I use BeSIM?
+
+Currently BeSIM is a standalone python3 script. Just run 'python app.py' to start the server.
+
+The BeSMART thermostat connects:
+ - api.besmart-home.com:6199 (udp)
+ - api.besmart-home.com:80 (tcp, http get)
+ - www.cloudwarm.com:80 (tcp, http post)
+
+To redirect the traffic to BeSIM you need to do one of the following:
+ - Configure your NAT router to redirect outgoing traffic with destination api.besmart-home.com to your BeSIM instance. You will probably also need to flush the connection tracking state in the router so it picks up the new destination.
+ - Update DNS on your router to change the IP address for api.besmart-home.com to your BeSIM instance. You will probably need to reboot the BeSMART wifi box so it picks up the new IP address.
+
+You should then see traffic arriving on BeSIM from your BeSMART device.
+
+You can then use the rest api to query the state, for example (replace 192.168.0.10 with the IP address of your BeSIM instance):
+ - Get a list of connected devices: curl http://192.168.0.10/api/v1.0/devices
+ - Get a list of rooms (thermostats) from the device: curl http://192.168.0.10/api/v1.0/devices/<deviceid>/rooms
+ - Get the state of the thermostat: curl http://192.168.0.10/api/v1.0/devices/<deviceid>/rooms/<roomid>
+ - Set T3 temperature (to 19.2degC): curl http://192.168.0.10/api/v1.0/devices/<deviceid>/rooms/<roomid>/t3 -H "Content-Type: application/json" -X PUT -d 192
+ - ... 
+
 
