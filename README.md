@@ -27,6 +27,8 @@ It does not yet support:
  - OpenTherm parameters when connected via OT
  - There is no authentication on the rest api
 
+Note: that currently when you modify a value the API may return the old value for up to 40s (the thermostat sends periodic status reports every 40s).
+
 ## How do I use BeSIM?
 
 Currently BeSIM is a standalone python3 script (tested on python3.9 only).

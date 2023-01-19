@@ -398,21 +398,26 @@ class UdpServer(threading.Thread):
     buf = frame.encode()
     self.sock.sendto(buf,addr)
 
-  def send_SET(self,addr,device,deviceid,room,msgType,value,response=0,wait=0):
+  def send_SET(self,addr,device,deviceid,room,msgType,value,response=0,write=0,wait=0,numBytes=None):
     cseq = NextCSeq(device,wait)
     flags = 0x0 # Always zero in DL
     unk2 = 0x0
     payload = struct.pack('<BBHII',cseq,flags,unk2,deviceid,room)
 
-    if msgType==MsgId.SET_T3 or msgType==MsgId.SET_T2 or msgType==MsgId.SET_T1 or msgType==MsgId.SET_MIN_HEAT_SETP or msgType==MsgId.SET_MAX_HEAT_SETP:
+    if numBytes is None:
+      numBytes = self.set_messages_payload_size(msgType)
+
+    if numBytes==4:
+      payload += struct.pack('<I',value)
+    elif numBytes==2:
       payload += struct.pack('<H',value)
-    elif msgType==MsgId.SET_UNITS or msgType==MsgId.SET_SEASON or msgType==MsgId.SET_SENSOR_INFLUENCE or msgType==MsgId.SET_CURVE or msgType==MsgId.SET_ADVANCE or msgType==MsgId.SET_MODE:
+    elif numBytes==1:
       payload += struct.pack('<B',value)
     else:
       raise ValueError('InternalError')
 
     wrapper = Wrapper(payload=payload)
-    payload = wrapper.encodeDL(msgType,response,write=1)
+    payload = wrapper.encodeDL(msgType,response,write=write)
     logger.info(f'Sending {wrapper}')
     frame = Frame(payload=payload)
     buf = frame.encode()
@@ -432,14 +437,14 @@ class UdpServer(threading.Thread):
     self.sock.sendto(buf,addr)
     return WaitCSeq(device,cseq)
 
-  def send_OUTSIDE_TEMP(self,addr,device,deviceid,val,response=0,wait=0):
+  def send_OUTSIDE_TEMP(self,addr,device,deviceid,val,response=0,write=0,wait=0):
     cseq = NextCSeq(device,wait)
     unk1 = 0x0 # Always zero in DL
     unk2 = 0x0
     unk3 = val # External Temperature Management 0 = off 1 = boiler 2 = web
     payload = struct.pack('<BBHIB',cseq,unk1,unk2,deviceid,unk3)
     wrapper = Wrapper(payload=payload)
-    payload = wrapper.encodeDL(MsgId.OUTSIDE_TEMP,response,write=1)
+    payload = wrapper.encodeDL(MsgId.OUTSIDE_TEMP,response,write=write)
     logger.info(f'Sending {wrapper}')
     frame = Frame(payload=payload)
     buf = frame.encode()
@@ -473,6 +478,14 @@ class UdpServer(threading.Thread):
     frame = Frame(payload=payload)
     buf = frame.encode()
     self.sock.sendto(buf,addr)
+
+  def set_messages_payload_size(self,msgType):
+    if msgType==MsgId.SET_T3 or msgType==MsgId.SET_T2 or msgType==MsgId.SET_T1 or msgType==MsgId.SET_MIN_HEAT_SETP or msgType==MsgId.SET_MAX_HEAT_SETP:
+      return 2
+    elif msgType==MsgId.SET_UNITS or msgType==MsgId.SET_SEASON or msgType==MsgId.SET_SENSOR_INFLUENCE or msgType==MsgId.SET_CURVE or msgType==MsgId.SET_ADVANCE or msgType==MsgId.SET_MODE:
+      return 1
+    else:
+      return None
 
   def handleMsg(self,data,addr):
 
@@ -801,18 +814,23 @@ class UdpServer(threading.Thread):
       if wrapper.response!=1:
         self.send_PROGRAM(addr,deviceid,room,day,prog,response=1)
 
-    elif wrapper.msgType==MsgId.SET_T3 or wrapper.msgType==MsgId.SET_T2 or wrapper.msgType==MsgId.SET_T1 or wrapper.msgType==MsgId.SET_CURVE or wrapper.msgType==MsgId.SET_MIN_HEAT_SETP or wrapper.msgType==MsgId.SET_MAX_HEAT_SETP or wrapper.msgType==MsgId.SET_UNITS or wrapper.msgType==MsgId.SET_SEASON or wrapper.msgType==MsgId.SET_SENSOR_INFLUENCE or wrapper.msgType==MsgId.SET_ADVANCE or wrapper.msgType==MsgId.SET_MODE:
+    elif self.set_messages_payload_size(wrapper.msgType) is not None:
       offset = 0 
 
       cseq, flags, unk2, deviceid, room = struct.unpack_from('<BBHII',payload,offset)
       offset += 12
 
-      if wrapper.msgType==MsgId.SET_T3 or wrapper.msgType==MsgId.SET_T2 or wrapper.msgType==MsgId.SET_T1 or wrapper.msgType==MsgId.SET_MIN_HEAT_SETP or wrapper.msgType==MsgId.SET_MAX_HEAT_SETP:
+      numBytes = self.set_messages_payload_size(wrapper.msgType)
+
+      if numBytes==4:
+        value, = struct.unpack_from('<I',payload,offset)
+        offset+=numBytes
+      elif numBytes==2:
         value, = struct.unpack_from('<H',payload,offset)
-        offset+=2
-      elif wrapper.msgType==MsgId.SET_UNITS or wrapper.msgType==MsgId.SET_SEASON or wrapper.msgType==MsgId.SET_SENSOR_INFLUENCE or wrapper.msgType==MsgId.SET_CURVE or wrapper.msgType==MsgId.SET_ADVANCE or wrapper.msgType==MsgId.SET_MODE:
+        offset+=numBytes
+      elif numBytes==1:
         value, = struct.unpack_from('<B',payload,offset)
-        offset+=1
+        offset+=numBytes
       else:
         logger.warn(f'Unrecognised MsgType {wrapper.msgType:x}')
         value = None

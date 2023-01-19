@@ -101,8 +101,11 @@ class WriteableParamResource(Resource):
     data = request.json
     val = data
     addr = Status['devices'][deviceid]['addr']
-    getUdpServer().send_SET(addr,Status['devices'][deviceid],deviceid,roomid,self.msgId,val,response=0)
-    return f'Request sent to {addr}'
+    new_val = getUdpServer().send_SET(addr,Status['devices'][deviceid],deviceid,roomid,self.msgId,val,response=0,write=1,wait=1)
+    if new_val!=val:
+      return { 'message' : 'ERROR' }, 500
+    else:
+      return { 'message' : 'OK' }, 200
 
 class Days(Resource):
   def get(self, deviceid, roomid):
@@ -122,16 +125,22 @@ class TimeResource(Resource):
     data = request.json
     val = data
     addr = Status['devices'][deviceid]['addr']
-    getUdpServer().send_DEVICE_TIME(addr,Status['devices'][deviceid],deviceid,val,response=0,write=1)
-    return f'Request sent to {addr}'
+    new_val = getUdpServer().send_DEVICE_TIME(addr,Status['devices'][deviceid],deviceid,val,response=0,write=1,wait=1)
+    if new_val!=val:
+      return { 'message' : 'ERROR' }, 500
+    else:
+      return { 'message' : 'OK' }, 200
 
 class OutsideTempResource(Resource):
   def put(self, deviceid):
     data = request.json
     val = data
     addr = Status['devices'][deviceid]['addr']
-    getUdpServer().send_OUTSIDE_TEMP(addr,Status['devices'][deviceid],deviceid,val,response=0,write=1)
-    return f'Request sent to {addr}'
+    new_val = getUdpServer().send_OUTSIDE_TEMP(addr,Status['devices'][deviceid],deviceid,val,response=0,write=1,wait=1)
+    if new_val!=val:
+      return { 'message' : 'ERROR' }, 500
+    else:
+      return { 'message' : 'OK' }, 200
 
 api.add_resource(Devices,'/api/v1.0/devices', endpoint = 'devices')
 api.add_resource(Device,'/api/v1.0/devices/<int:deviceid>', endpoint = 'device')
