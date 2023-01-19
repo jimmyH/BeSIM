@@ -20,7 +20,7 @@ The intent is that you will be able to use a Home Assistant custom component to 
 
 ## Caveats
 
-This project is currently only a proof-of-concept implementation. Use at your own risk.
+This project is currently only a **proof-of-concept** implementation. Use at your own risk.
 
 It does not yet support:
  - Multiple thermostats
@@ -29,7 +29,9 @@ It does not yet support:
 
 ## How do I use BeSIM?
 
-Currently BeSIM is a standalone python3 script. Just run 'python app.py' to start the server.
+Currently BeSIM is a standalone python3 script (tested on python3.9 only).
+It is recommended to run from a virtual environment, and you can install the dependencies from requirements.txt `pip install -r requirements.txt`.
+To start the server, just run 'python app.py'.
 
 The BeSMART thermostat connects:
  - api.besmart-home.com:6199 (udp)
@@ -48,5 +50,4 @@ You can then use the rest api to query the state, for example (replace 192.168.0
  - Get the state of the thermostat: `curl http://192.168.0.10/api/v1.0/devices/<deviceid>/rooms/<roomid>`
  - Set T3 temperature (to 19.2degC): `curl http://192.168.0.10/api/v1.0/devices/<deviceid>/rooms/<roomid>/t3 -H "Content-Type: application/json" -X PUT -d 192`
  - ... 
-
 
