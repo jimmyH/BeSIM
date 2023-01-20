@@ -5,6 +5,8 @@ import socket
 import threading
 import struct
 import logging
+import hexdump
+import traceback
 
 from status import getPeerStatus, getRoomStatus, getDeviceStatus, getStatus
 
@@ -23,6 +25,14 @@ class MsgId(IntEnum):
   #
   SET_MODE = 0x02
 
+  # 0x03    Unknown (from test probe: deviceid) (invalid)
+  # 0x04    Unknown (from test probe: deviceid) (invalid)
+  # 0x05    Unknown (from test probe: deviceid) (invalid)
+  # 0x06    Unknown (from test probe: deviceid) (invalid)
+  # 0x07    Unknown (from test probe: deviceid) (invalid)
+  # 0x08    Unknown (from test probe: deviceid) (invalid)
+  # 0x09    Unknown (from test probe: deviceid) (invalid)
+
   #
   # The thermostat daily program (one message per day)
   # UL/DL initiated
@@ -38,12 +48,20 @@ class MsgId(IntEnum):
   SET_T2 = 0x0c
   SET_T1 = 0x0d
 
+  # 0x0e    Unknown (from test probe: deviceid, roomid) (invalid)
+  # 0x0f    Unknown (from test probe: deviceid, long message with lots of 0x0 followed by lots of 0xff) Could this be OpenTherm parameters?
+  # 0x10    Unknown (from test probe: deviceid) (invalid)
+  # 0x11    Unknown (from test probe: deviceid,byte=0xff)
+
   #
   # Enable/Disable advance on the thermostat
   # 1 = Advance
   # DL initiated
   #
   SET_ADVANCE = 0x12
+
+  # 0x13    Unknown (from test probe: deviceid) (invalid)
+  # 0x14    Unknown (from test probe: deviceid, 4 bytes = 0x0)
 
   #
   # Get the device software version
@@ -87,11 +105,16 @@ class MsgId(IntEnum):
   #
   SET_SENSOR_INFLUENCE = 0x1b
 
+  # 0x1c    Unknown (from test probe: deviceid, roomid, byte=85)
+
   #
   # No idea what this message is!!
   # DL initiated
   #
   REFRESH = 0x1d
+
+  # 0x1e    Unknown (from test probe: deviceid) (invalid)
+  # 0x1f    Unknown (from test probe: deviceid) (invalid)
 
   #
   # Where to obtain the outside temperature: web/boiler/none (OpenTherm only)
@@ -100,17 +123,26 @@ class MsgId(IntEnum):
   #
   OUTSIDE_TEMP = 0x20
 
+  # 0x21    Unknown (from test probe: deviceid) (invalid)
+
   #
   # No idea what this message is!!!
   # UL initiated
   #
   PING = 0x22
 
+  # 0x23    Unknown (from test probe: deviceid) (invalid)
+
   #
   # Periodic (every 40s) status from the device
   # UL initiated
   #
   STATUS = 0x24
+
+  # 0x25    Unknown (from test probe: deviceid, byte=0x1)
+  # 0x26    Unknown (from test probe: deviceid) (invalid)
+  # 0x27    Unknown (from test probe: deviceid) (invalid)
+  # 0x28    Unknown (from test probe: deviceid) (invalid)
 
   #
   # Set the time on the device
@@ -134,6 +166,20 @@ class MsgId(IntEnum):
   # DL initiated
   #
   GET_PROG = 0x2b
+
+  # 0x2c    Unknown (from test probe: deviceid, short=0x1c2)
+  # 0x2d    Unknown (from test probe: deviceid) (invalid)
+  # 0x2e    Unknown (from test probe: deviceid) (invalid)
+  # 0x30    Unknown (from test probe: deviceid) (invalid)
+
+  #
+  #  Fake ID for unknown ids
+  #
+  UNKNOWN_ID = 0xff
+
+  @classmethod
+  def _missing_(cls,number):
+    return cls(cls.UNKNOWN_ID)
 
 #
 # Hardcoded header/footer on all messages
@@ -203,7 +249,6 @@ class Frame():
     return buf
 
   def decode(self,data):
-    # @todo Catch any exceptions from unpacking an invalid packet
     offset = 0
     hdr, length, self.seq = struct.unpack_from('<HHI',data,offset)
     offset += 8
@@ -252,6 +297,7 @@ class Wrapper():
     self.downlink = None
     self.response = None
     self.write = None
+    self.valid = None
 
     self.flags = None # for debug in case there's other useful data in here
 
@@ -265,10 +311,12 @@ class Wrapper():
     # bit 1 can be 0 or 1 in uplink (not sure why)
     # bit 2 can be 0 or 1 in uplink (maybe sync indicator?)
     # bit 4 is downlink/uplink flag
-    # bit 5&6 are always 1
+    # bit 5 is valid=1/invalid=0
+    # bit 6 is read=0/write=1 flag
     # bit 7 is response flag
     self.downlink = (self.flags >> 3) & 0x1
 
+    self.valid = (self.flags >> 2) & 0x1
     self.write = (self.flags >> 1) & 0x1
     self.response = self.flags & 0x1
 
@@ -278,8 +326,10 @@ class Wrapper():
     if (self.flags>>7) & 0x1 or (self.flags>>4) & 0x1:
       logger.warn(f'Unexpected bit 0/3 in {self.flags=:x}')
 
-    if (self.flags>>2) & 0x1 !=1:
-      logger.warn(f'Unexpected bit 5 in {self.flags=:x}')
+    if self.valid!=1:
+      # @todo No idea if this is just unsupported message, or includes
+      #       other types of errors.
+      logger.error(f'Invalid Message {self.flags=:x}')
 
     if self.downlink!=0:
       logger.warn(f'Unexpected downlink flag')
@@ -292,9 +342,12 @@ class Wrapper():
     self.response = response
     self.cloudsynclost = 0
     self.write = write
+    self.valid = 1
+
     # bits 0..3 are always 0 in DL
     # bit 4 is downlink/uplink flag
-    # bit 5&6 are always 1
+    # bit 5 is valid=1
+    # bit 6 is read=0/write=1
     # bit 7 is response flag
     self.flags = (self.response & 0x1)
 
@@ -302,7 +355,9 @@ class Wrapper():
     if write:
       self.flags |= (0x1 << 1)
 
-    self.flags |= (0x1 << 2)
+    # bit5 = 1 for valid, bit5 = 0 for invalid
+    self.flags |= (self.valid << 2)
+
     self.flags |= ((self.downlink & 0x1) << 3 )
 
     buf = struct.pack('<BBH',self.msgType,self.flags,len(self.payload)-8)    # encoded length is -8
@@ -331,8 +386,12 @@ class UdpServer(threading.Thread):
     self.sock.bind(self.addr)
     while(not self.stop):
       data, addr = self.sock.recvfrom(self.MAX_DATA)
-      logger.info(f'Got {data} {addr}')
-      self.handleMsg(data,addr)
+      logger.info(f'From {addr} {len(data)} bytes : {hexdump.dump(data)}')
+      try:
+        self.handleMsg(data,addr)
+      except Exception:
+        logger.error(traceback.format_exc())
+        time.sleep(1)
 
   def send_PING(self,addr,deviceid,response=0):
     cseq = UNUSED_CSEQ
@@ -345,6 +404,7 @@ class UdpServer(threading.Thread):
     logger.info(f'Sending {wrapper}')
     frame = Frame(payload=payload)
     buf = frame.encode()
+    logger.info(f'To {addr} {len(buf)} bytes : {hexdump.dump(buf)}')
     self.sock.sendto(buf,addr)
 
   def send_GET_PROG(self,addr,device,deviceid,room,response=0,wait=0):
@@ -358,6 +418,7 @@ class UdpServer(threading.Thread):
     logger.info(f'Sending {wrapper}')
     frame = Frame(payload=payload)
     buf = frame.encode()
+    logger.info(f'To {addr} {len(buf)} bytes : {hexdump.dump(buf)}')
     self.sock.sendto(buf,addr)
     return WaitCSeq(device,cseq)
 
@@ -371,6 +432,7 @@ class UdpServer(threading.Thread):
     logger.info(f'Sending {wrapper}')
     frame = Frame(payload=payload)
     buf = frame.encode()
+    logger.info(f'To {addr} {len(buf)} bytes : {hexdump.dump(buf)}')
     self.sock.sendto(buf,addr)
     return WaitCSeq(device,cseq)
 
@@ -384,6 +446,7 @@ class UdpServer(threading.Thread):
     logger.info(f'Sending {wrapper}')
     frame = Frame(payload=payload)
     buf = frame.encode()
+    logger.info(f'To {addr} {len(buf)} bytes : {hexdump.dump(buf)}')
     self.sock.sendto(buf,addr)
 
   def send_STATUS(self,addr,deviceid,lastseen,response=0):
@@ -396,6 +459,7 @@ class UdpServer(threading.Thread):
     logger.info(f'Sending {wrapper}')
     frame = Frame(payload=payload)
     buf = frame.encode()
+    logger.info(f'To {addr} {len(buf)} bytes : {hexdump.dump(buf)}')
     self.sock.sendto(buf,addr)
 
   def send_SET(self,addr,device,deviceid,room,msgType,value,response=0,write=0,wait=0,numBytes=None):
@@ -421,6 +485,7 @@ class UdpServer(threading.Thread):
     logger.info(f'Sending {wrapper}')
     frame = Frame(payload=payload)
     buf = frame.encode()
+    logger.info(f'To {addr} {len(buf)} bytes : {hexdump.dump(buf)}')
     self.sock.sendto(buf,addr)
     return WaitCSeq(device,cseq)
 
@@ -434,6 +499,7 @@ class UdpServer(threading.Thread):
     logger.info(f'Sending {wrapper}')
     frame = Frame(payload=payload)
     buf = frame.encode()
+    logger.info(f'To {addr} {len(buf)} bytes : {hexdump.dump(buf)}')
     self.sock.sendto(buf,addr)
     return WaitCSeq(device,cseq)
 
@@ -448,6 +514,7 @@ class UdpServer(threading.Thread):
     logger.info(f'Sending {wrapper}')
     frame = Frame(payload=payload)
     buf = frame.encode()
+    logger.info(f'To {addr} {len(buf)} bytes : {hexdump.dump(buf)}')
     self.sock.sendto(buf,addr)
     return WaitCSeq(device,cseq)
 
@@ -463,6 +530,7 @@ class UdpServer(threading.Thread):
     logger.info(f'Sending {wrapper}')
     frame = Frame(payload=payload)
     buf = frame.encode()
+    logger.info(f'To {addr} {len(buf)} bytes : {hexdump.dump(buf)}')
     self.sock.sendto(buf,addr)
     return WaitCSeq(device,cseq)
 
@@ -477,6 +545,7 @@ class UdpServer(threading.Thread):
     logger.info(f'Sending {wrapper}')
     frame = Frame(payload=payload)
     buf = frame.encode()
+    logger.info(f'To {addr} {len(buf)} bytes : {hexdump.dump(buf)}')
     self.sock.sendto(buf,addr)
 
   def set_messages_payload_size(self,msgType):
@@ -488,8 +557,6 @@ class UdpServer(threading.Thread):
       return None
 
   def handleMsg(self,data,addr):
-
-    # @todo Catch any exceptions from unpacking an invalid packet
 
     frame = Frame()
     payload = frame.decode(data)
@@ -522,7 +589,7 @@ class UdpServer(threading.Thread):
       for n in range(8):        # Supports up to 8 thermostats
         room, byte1, byte2, temp, settemp, t3, t2, t1, maxsetp, minsetp = struct.unpack_from('<IBBHHHHHHH',payload,offset)
         offset += 20
-   
+
         mode = byte2>>4
         unk9 = byte2 & 0xf
         byte3, byte4, unk13, tempcurve, heatingsetp = struct.unpack_from('<BBHBB',payload,offset)
@@ -611,7 +678,7 @@ class UdpServer(threading.Thread):
       if unk1 != 0x2:
         logger.warn(f'Unexpected {unk1=:x}')
 
-      if unk2 != 0:
+      if unk2 != 1:
         logger.warn(f'Unexpected {unk2=:x}')
 
       if unk3 != 0x800fe0:
@@ -653,7 +720,7 @@ class UdpServer(threading.Thread):
       offset += 8
       # Padding at end ??
       logger.info(f'{deviceid=}')
-   
+
       deviceStatus = getDeviceStatus(deviceid)
       peerStatus['devices'].add(deviceid)
       deviceStatus['addr'] = addr
@@ -664,7 +731,7 @@ class UdpServer(threading.Thread):
       if unk1 != 0x2:
         logger.warn(f'Unexpected {unk1=:x}')
 
-      if unk2 != 0x0:
+      if unk2 != 0x1:
         logger.warn(f'Unexpected {unk2=:x}')
 
       if wrapper.response:
@@ -678,7 +745,7 @@ class UdpServer(threading.Thread):
       cseq, unk1, unk2, deviceid, val, unk3, unk4, unk5 = struct.unpack_from('<BBHIBBHI',payload,offset)
       offset += 16
       logger.info(f'{deviceid=} {val=}')
-   
+
       deviceStatus = getDeviceStatus(deviceid)
       peerStatus['devices'].add(deviceid)
       deviceStatus['addr'] = addr
@@ -689,7 +756,7 @@ class UdpServer(threading.Thread):
       if unk1 != 0x2:
         logger.warn(f'Unexpected {unk1=:x}')
 
-      if unk2 != 0x0:
+      if unk2 != 0x1:
         logger.warn(f'Unexpected {unk2=:x}')
 
       if unk3 != 0x0:
@@ -710,7 +777,7 @@ class UdpServer(threading.Thread):
       offset += 9
 
       logger.info(f'{deviceid=} {val=}')
-   
+
       deviceStatus = getDeviceStatus(deviceid)
       peerStatus['devices'].add(deviceid)
       deviceStatus['addr'] = addr
@@ -721,7 +788,7 @@ class UdpServer(threading.Thread):
       if unk1 != 0x2:
         logger.warn(f'Unexpected {unk1=:x}')
 
-      if unk2 != 0x0:
+      if unk2 != 0x1:
         logger.warn(f'Unexpected {unk2=:x}')
 
       # val  = 0x0 means no external temperature management
@@ -736,7 +803,7 @@ class UdpServer(threading.Thread):
       cseq, unk1, unk2, deviceid, room, unk3 = struct.unpack_from('<BBHIIH',payload,offset)
       offset += 14
       logger.info(f'{deviceid=} {room=} {unk3=:x}')
-   
+
       deviceStatus = getDeviceStatus(deviceid)
       peerStatus['devices'].add(deviceid)
       deviceStatus['addr'] = addr
@@ -747,7 +814,7 @@ class UdpServer(threading.Thread):
       if unk1 != 0x2:
         logger.warn(f'Unexpected {unk1=:x}')
 
-      if unk2 != 0x0:
+      if unk2 != 0x1:
         logger.warn(f'Unexpected {unk2=:x}')
 
       if unk3 != 0xa14:
@@ -774,7 +841,7 @@ class UdpServer(threading.Thread):
       if unk1 != 0x2:
         logger.warn(f'Unexpected {unk1=:x}')
 
-      if unk2 != 0:
+      if unk2 != 1:
         logger.warn(f'Unexpected {unk2=:x}')
 
       if wrapper.response!=1:
@@ -807,7 +874,7 @@ class UdpServer(threading.Thread):
       if unk1 != 0x2:
         logger.warn(f'Unexpected {unk1=:x}')
 
-      if unk2 != 0:
+      if unk2 != 1:
         logger.warn(f'Unexpected {unk2=:x}')
 
       # Send a DL PROGRAM message
@@ -815,7 +882,7 @@ class UdpServer(threading.Thread):
         self.send_PROGRAM(addr,deviceid,room,day,prog,response=1)
 
     elif self.set_messages_payload_size(wrapper.msgType) is not None:
-      offset = 0 
+      offset = 0
 
       cseq, flags, unk2, deviceid, room = struct.unpack_from('<BBHII',payload,offset)
       offset += 12
@@ -845,20 +912,20 @@ class UdpServer(threading.Thread):
 
       roomStatus = getRoomStatus(deviceid,room)
 
-      if unk2 != 0x0:
+      if unk2 != 0x1:
         logger.warn(f'Unexpected {unk2=:x}')
 
       if wrapper.downlink and flags != 0x0:
         logger.warn(f'Unexpected {flags=:x} for downlink')
 
-      if not wrapper.downlink and ( flags != 0x0 or flags != 0x2):
+      if not wrapper.downlink and ( flags != 0x0 and flags != 0x2):
         logger.warn(f'Unexpected {flags=:x} for uplink')
 
       # Send a DL SET message if this was initiated by the device
       if value is not None:
         if wrapper.response!=1:
           self.send_SET(addr,device,deviceid,room,wrapper.msgType,value,response=1)
-        else: 
+        else:
           SignalCSeq(deviceStatus,cseq,value)
 
     else:
@@ -871,5 +938,3 @@ class UdpServer(threading.Thread):
 if __name__ == '__main__':
   udpServer = UdpServer( ('',6199) )
   udpServer.start()
-
-

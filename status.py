@@ -9,7 +9,7 @@ def getStatus():
 def getPeerStatus(addr):
   if addr not in Status['peers']:
     Status['peers'][addr] = { 'devices' : set() }
-  return Status['peers'][addr]  
+  return Status['peers'][addr]
 
 def getDeviceStatus(deviceid):
   if deviceid not in Status['devices']:
@@ -24,5 +24,3 @@ def getRoomStatus(deviceid,room):
   if room not in deviceStatus['rooms']:
     deviceStatus['rooms'][room] = { 'days' : {} }
   return deviceStatus['rooms'][room]
-
-

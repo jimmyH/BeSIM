@@ -167,7 +167,7 @@ api.add_resource(WriteableParamResource, '/api/v1.0/devices/<int:deviceid>/rooms
 
 api.add_resource(ReadonlyParamResource, '/api/v1.0/devices/<int:deviceid>/rooms/<int:roomid>/boost', endpoint = 'boost', resource_class_kwargs = { 'param' : 'boost' }) # @todo Need to find how to set this..
 
-api.add_resource(ReadonlyParamResource, '/api/v1.0/devices/<int:deviceid>/rooms/<int:roomid>/temp', endpoint = 'temp', resource_class_kwargs = { 'param' : 'temp' }) 
+api.add_resource(ReadonlyParamResource, '/api/v1.0/devices/<int:deviceid>/rooms/<int:roomid>/temp', endpoint = 'temp', resource_class_kwargs = { 'param' : 'temp' })
 api.add_resource(ReadonlyParamResource, '/api/v1.0/devices/<int:deviceid>/rooms/<int:roomid>/settemp', endpoint = 'settemp', resource_class_kwargs = { 'param' : 'settemp' })
 api.add_resource(ReadonlyParamResource, '/api/v1.0/devices/<int:deviceid>/rooms/<int:roomid>/cmdissued', endpoint = 'cmdissued', resource_class_kwargs = { 'param' : 'cmdissued' })
 
@@ -176,7 +176,24 @@ api.add_resource(Peers,'/api/v1.0/peers', endpoint = 'peers')
 api.add_resource(Days,'/api/v1.0/devices/<int:deviceid>/rooms/<int:roomid>/days', endpoint = 'days')
 api.add_resource(Day,'/api/v1.0/devices/<int:deviceid>/rooms/<int:roomid>/days/<int:dayid>', endpoint = 'day')
 
+#
+# Following endpoint is for development only
+#
+
+class TestResource(Resource):
+  def get(self, deviceid, roomid):
+    id = request.args.get('id')
+    if id is not None:
+      id = int(id,0)
+    else:
+      id = MsgId.SET_ADVANCE
+    val = 0
+    addr = Status['devices'][deviceid]['addr']
+    return getUdpServer().send_SET(addr,Status['devices'][deviceid],deviceid,roomid,id,val,response=0,write=0,wait=1)
+
+#api.add_resource(TestResource,'/api/v1.0/devices/<int:deviceid>/rooms/<int:roomid>/test', endpoint = 'test')
+
+
 if __name__ == '__main__':
 
   app.run(debug=False, host='0.0.0.0', port=80)
-
