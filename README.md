@@ -31,9 +31,12 @@ Note: that currently when you modify a value the API may return the old value fo
 
 ## How do I use BeSIM?
 
-Currently BeSIM is a standalone python3 script (tested on python3.9 only).
-It is recommended to run from a virtual environment, and you can install the dependencies from requirements.txt `pip install -r requirements.txt`.
-To start the server, just run 'python app.py'.
+BeSIM can either be run as a standalone python3 script (tested on python3.9 only).
+ - It is recommended to run from a virtual environment, and you can install the dependencies from requirements.txt `pip install -r requirements.txt`.
+ - To start the server, just run 'python app.py'.
+Or run as a container from docker/podman:
+ - `docker build . -t besim:latest`
+ - `docker run -it -p 80:80 -p 6199:6199 besim:latest`
 
 The BeSMART thermostat connects:
  - api.besmart-home.com:6199 (udp)
