@@ -906,11 +906,33 @@ class UdpServer(threading.Thread):
       peerStatus['devices'].add(deviceid)
       deviceStatus['addr'] = addr
 
-      # @todo we should update the device status with the updated value(s)
+      roomStatus = getRoomStatus(deviceid,room)
 
       logger.info(f'{cseq=} {deviceid=} {room=} {value=}')
 
-      roomStatus = getRoomStatus(deviceid,room)
+      # Update the device status with the updated value
+      if wrapper.msgType == MsgId.SET_T1:
+        roomStatus['t1'] = value
+      elif wrapper.msgType == MsgId.SET_T2:
+        roomStatus['t2'] = value
+      elif wrapper.msgType == MsgId.SET_T3:
+        roomStatus['t3'] = value
+      elif wrapper.msgType == MsgId.SET_MIN_HEAT_SETP:
+        roomStatus['minsetp'] = value
+      elif wrapper.msgType == MsgId.SET_MAX_HEAT_SETP:
+        roomStatus['maxsetp'] = value
+      elif wrapper.msgType == MsgId.SET_UNITS:
+        roomStatus['units'] = value
+      elif wrapper.msgType == MsgId.SET_SEASON:
+        roomStatus['winter'] = value
+      elif wrapper.msgType == MsgId.SET_ADVANCE:
+        roomStatus['advance'] = value
+      elif wrapper.msgType == MsgId.SET_MODE:
+        roomStatus['mode'] = value
+      elif wrapper.msgType == MsgId.SET_SENSOR_INFLUENCE:
+        roomStatus['sensorinfluence'] = value
+      elif wrapper.msgType == MsgId.SET_CURVE:
+        roomStatus['tempcurve'] = value
 
       if unk2 != 0x1:
         logger.warn(f'Unexpected {unk2=:x}')

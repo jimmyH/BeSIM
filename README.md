@@ -17,6 +17,7 @@ It consists of two components:
  - A REST API which allows you to get/set parameters from the BeSMART thermostats.
 
 The intent is that you will be able to use a Home Assistant custom component to control your thermostat(s), but currently this has not been implemented.
+A (very) basic angular app can also be used to control the thermostat(s).
 
 ## Caveats
 
