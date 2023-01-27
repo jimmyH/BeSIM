@@ -27,6 +27,8 @@ It does not yet support:
  - OpenTherm parameters when connected via OT
  - There is no authentication on the rest api
 
+Note: that CORS (Cross-origin resource sharing) headers are set on the server.
+
 Note: that currently when you modify a value the API may return the old value for up to 40s (the thermostat sends periodic status reports every 40s).
 
 ## How do I use BeSIM?
@@ -34,6 +36,7 @@ Note: that currently when you modify a value the API may return the old value fo
 BeSIM can either be run as a standalone python3 script (tested on python3.9 only).
  - It is recommended to run from a virtual environment, and you can install the dependencies from requirements.txt `pip install -r requirements.txt`.
  - To start the server, just run 'python app.py'.
+
 Or run as a container from docker/podman:
  - `docker build . -t besim:latest`
  - `docker run -it -p 80:80 -p 6199:6199 besim:latest`

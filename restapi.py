@@ -1,5 +1,6 @@
 from flask import Flask, request
 from flask_restful import reqparse, abort, Api, Resource
+from flask_cors import CORS
 import json
 import time
 import logging
@@ -16,6 +17,7 @@ class SetEncoder(json.JSONEncoder):
     return json.JSONEncoder.default(self,o)
 
 app = Flask(__name__)
+CORS(app)
 api = Api(app)
 
 def getUdpServer():
