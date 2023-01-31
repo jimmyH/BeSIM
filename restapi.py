@@ -117,6 +117,16 @@ class Day(Resource):
   def get(self, deviceid, roomid, dayid):
     return Status['devices'][deviceid]['rooms'][roomid]['days'][dayid]
 
+  def put(self, deviceid, roomid, dayid):
+    data = request.json
+    val = data
+    addr = Status['devices'][deviceid]['addr']
+    new_val = getUdpServer().send_PROGRAM(addr,Status['devices'][deviceid],deviceid,roomid,dayid,val,response=0,write=1,wait=1)
+    if new_val!=val:
+      return { 'message' : 'ERROR' }, 500
+    else:
+      return { 'message' : 'OK' }, 200
+
 class TimeResource(Resource):
   def get(self, deviceid):
     val = 0

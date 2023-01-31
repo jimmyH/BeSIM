@@ -436,18 +436,19 @@ class UdpServer(threading.Thread):
     self.sock.sendto(buf,addr)
     return WaitCSeq(device,cseq)
 
-  def send_PROGRAM(self,addr,deviceid,room,day,prog,response=0):
+  def send_PROGRAM(self,addr,device,deviceid,room,day,prog,response=0,write=0,wait=0):
     cseq = UNUSED_CSEQ
     unk1 = 0x0 # Always zero in DL
     unk2 = 0x0
     payload = struct.pack('<BBHIIH24B',cseq,unk1,unk2,deviceid,room,day,*prog)
     wrapper = Wrapper(payload=payload)
-    payload = wrapper.encodeDL(MsgId.PROGRAM,response,write=1)
+    payload = wrapper.encodeDL(MsgId.PROGRAM,response,write=write)
     logger.info(f'Sending {wrapper}')
     frame = Frame(payload=payload)
     buf = frame.encode()
     logger.info(f'To {addr} {len(buf)} bytes : {hexdump.dump(buf)}')
     self.sock.sendto(buf,addr)
+    return WaitCSeq(device,cseq)
 
   def send_STATUS(self,addr,deviceid,lastseen,response=0):
     cseq = UNUSED_CSEQ
@@ -879,7 +880,7 @@ class UdpServer(threading.Thread):
 
       # Send a DL PROGRAM message
       if wrapper.response!=1:
-        self.send_PROGRAM(addr,deviceid,room,day,prog,response=1)
+        self.send_PROGRAM(addr,deviceStatus,deviceid,room,day,prog,response=1)
 
     elif self.set_messages_payload_size(wrapper.msgType) is not None:
       offset = 0
