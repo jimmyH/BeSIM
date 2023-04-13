@@ -40,7 +40,7 @@ BeSIM can either be run as a standalone python3 script (tested on python3.9 only
 
 Or run as a container from docker/podman:
  - `docker build . -t besim:latest`
- - `docker run -it -p 80:80 -p 6199:6199 besim:latest`
+ - `docker run -it -p 80:80 -p 6199:6199/udp besim:latest`
 
 The BeSMART thermostat connects:
  - api.besmart-home.com:6199 (udp)
