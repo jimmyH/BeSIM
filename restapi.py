@@ -4,6 +4,7 @@ from flask_cors import CORS
 import json
 import time
 import logging
+import os
 
 from udpserver import MsgId
 from status import Status
@@ -207,5 +208,7 @@ class TestResource(Resource):
 
 
 if __name__ == '__main__':
-
-  app.run(debug=False, host='0.0.0.0', port=80)
+  host=os.getenv('FLASK_HOST', '0.0.0.0')
+  port=os.getenv('FLASK_PORT', '80')
+  debug=os.getenv('FLASK_DEBUG', False)
+  app.run(debug=debug, host=host, port=int(port))
