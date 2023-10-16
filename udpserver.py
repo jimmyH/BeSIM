@@ -633,6 +633,8 @@ class UdpServer(threading.Thread):
           roomStatus['cmdissued'] = cmdissued
           roomStatus['winter'] = winter
 
+          roomStatus['lastseen'] = int(time.time())
+
           if len(roomStatus['days'])!=7 or wrapper.cloudsynclost:
             rooms_to_get_prog.add(room)
 

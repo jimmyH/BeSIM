@@ -1,3 +1,5 @@
+import time
+
 #
 # This is where we store the status of any connected peers/devices
 #
@@ -21,6 +23,13 @@ def getDeviceStatus(deviceid):
 
 def getRoomStatus(deviceid,room):
   deviceStatus = getDeviceStatus(deviceid)
+
+  # If a room has not received a report in the last 10 minutes,
+  # we erase its' data.
+  if room in deviceStatus['rooms'] and 'lastseen' in deviceStatus['rooms'][room]:
+    if deviceStatus['rooms'][room]['lastseen'] < time.time()+10*60:
+      deviceStatus['rooms'][room] = { 'days' : {} }
+
   if room not in deviceStatus['rooms']:
     deviceStatus['rooms'][room] = { 'days' : {} }
   return deviceStatus['rooms'][room]
