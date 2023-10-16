@@ -5,6 +5,7 @@ import json
 import time
 import logging
 import os
+import requests
 
 from udpserver import MsgId
 from status import getStatus,getDeviceStatus,getRoomStatus
@@ -155,6 +156,32 @@ class OutsideTempResource(Resource):
     else:
       return { 'message' : 'OK' }, 200
 
+class Weather(Resource):
+  def get(self):
+    # Try and use the same provider as HomeAssistant
+    url = 'https://aa015h6buqvih86i1.api.met.no/weatherapi/locationforecast/2.0/complete'
+
+    # Get the lat/long from environment
+    latitude = os.getenv('LATITUDE',None)
+    longitude = os.getenv('LONGITUDE',None)
+
+    if latitude is None or longitude is None:
+      return { }, 500
+
+    try:
+      latitude = float(latitude)
+      longitude = float(longitude)
+    except ValueError:
+      return { }, 500
+
+    params = { 'lat':latitude, 'lon':longitude }
+    headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/118.0' } # Otherwise we get invalid user agent
+    r = requests.get(url,params=params,headers=headers)
+    if r.status_code==200:
+      return r.json(), 200
+    else:
+      return { }, r.status_code
+
 api.add_resource(Devices,'/api/v1.0/devices', endpoint = 'devices')
 api.add_resource(Device,'/api/v1.0/devices/<int:deviceid>', endpoint = 'device')
 
@@ -188,6 +215,9 @@ api.add_resource(Peers,'/api/v1.0/peers', endpoint = 'peers')
 
 api.add_resource(Days,'/api/v1.0/devices/<int:deviceid>/rooms/<int:roomid>/days', endpoint = 'days')
 api.add_resource(Day,'/api/v1.0/devices/<int:deviceid>/rooms/<int:roomid>/days/<int:dayid>', endpoint = 'day')
+
+#api.add_resource(Weather,'/api/v1.0/weather/<float(signed=True):latitude>/<float(signed=True):longitude>', endpoint='weather')
+api.add_resource(Weather,'/api/v1.0/weather', endpoint='weather')
 
 #
 # Following endpoint is for development only

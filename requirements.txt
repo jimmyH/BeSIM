@@ -3,3 +3,4 @@ Flask
 Flask-RESTful
 hexdump
 flask-cors
+requests
