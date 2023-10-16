@@ -27,7 +27,7 @@ def getRoomStatus(deviceid,room):
   # If a room has not received a report in the last 10 minutes,
   # we erase its' data.
   if room in deviceStatus['rooms'] and 'lastseen' in deviceStatus['rooms'][room]:
-    if deviceStatus['rooms'][room]['lastseen'] < time.time()+10*60:
+    if deviceStatus['rooms'][room]['lastseen'] < time.time()-10*60:
       deviceStatus['rooms'][room] = { 'days' : {} }
 
   if room not in deviceStatus['rooms']:
