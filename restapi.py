@@ -121,8 +121,11 @@ class ReadonlyParamResource(Resource):
   def __init__(self, **kwargs):
     self.param = kwargs['param']
 
-  def get(self, deviceid, roomid):
-    return getRoomStatus(deviceid,roomid)[self.param]
+  def get(self, deviceid, roomid=None):
+    if roomid is not None:
+      return getRoomStatus(deviceid,roomid)[self.param]
+    else:
+      return getDeviceStatus(deviceid)[self.param]
 
 
 class WriteableParamResource(Resource):
@@ -228,6 +231,10 @@ api.add_resource(Day,'/api/v1.0/devices/<int:deviceid>/rooms/<int:roomid>/days/<
 
 #api.add_resource(Weather,'/api/v1.0/weather/<float(signed=True):latitude>/<float(signed=True):longitude>', endpoint='weather')
 api.add_resource(Weather,'/api/v1.0/weather', endpoint='weather')
+
+# OpenTherm parameters
+for endpoint in [ 'boilerOn', 'dhwMode', 'tFLO', 'trEt', 'tdH', 'tFLU', 'tESt', 'MOdU', 'FLOr', 'HOUr', 'PrES', 'tFL2' ]:
+  api.add_resource(ReadonlyParamResource, f'/api/v1.0/devices/<int:deviceid>/{endpoint}', endpoint=endpoint, resource_class_kwargs = { 'param' : endpoint })
 
 #
 # Following endpoint is for development only
