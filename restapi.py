@@ -6,6 +6,8 @@ import time
 import logging
 import os
 import requests
+from cachetools import cached, TTLCache
+from threading import RLock
 
 from udpserver import MsgId
 from status import getStatus,getDeviceStatus,getRoomStatus
@@ -25,6 +27,32 @@ api = Api(app)
 def getUdpServer():
   return app.config['udpServer']
 
+@cached(cache=TTLCache(maxsize=1, ttl=3600), lock=RLock())
+def getWeather():
+  # Try and use the same provider as HomeAssistant
+  url = 'https://aa015h6buqvih86i1.api.met.no/weatherapi/locationforecast/2.0/complete'
+
+  # Get the lat/long from environment
+  latitude = os.getenv('LATITUDE',None)
+  longitude = os.getenv('LONGITUDE',None)
+
+  if latitude is None or longitude is None:
+    return { }, 500
+
+  try:
+    latitude = float(latitude)
+    longitude = float(longitude)
+  except ValueError:
+    return { }, 500
+
+  params = { 'lat':latitude, 'lon':longitude }
+  headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/118.0' } # Otherwise we get invalid user agent
+  r = requests.get(url,params=params,headers=headers)
+  if r.status_code==200:
+    return r.json(), 200
+  else:
+    return { }, r.status_code
+
 #
 # Endpoints to replicate Besmart/Cloudwarm behaviour
 #
@@ -43,7 +71,11 @@ def getVersion():
 def getWebTemperature():
   logger.debug(f'{request.args}')
   deviceId = request.args.get('deviceId')
-  return "E_1"
+  weather, status_code  = getWeather()
+  if status_code != 200:
+    return "E_1"
+  else:
+    return str(round(weather['properties']['timeseries'][0]['data']['instant']['details']['air_temperature']))
 
 # www.cloudwarm.com
 #json_data={"wifi_box_id":"165XXXXXXX","start_time":"1672552802","sys_run_time":"9173915","continued_time":"3576","type":"2","value":"0"}'
@@ -158,29 +190,7 @@ class OutsideTempResource(Resource):
 
 class Weather(Resource):
   def get(self):
-    # Try and use the same provider as HomeAssistant
-    url = 'https://aa015h6buqvih86i1.api.met.no/weatherapi/locationforecast/2.0/complete'
-
-    # Get the lat/long from environment
-    latitude = os.getenv('LATITUDE',None)
-    longitude = os.getenv('LONGITUDE',None)
-
-    if latitude is None or longitude is None:
-      return { }, 500
-
-    try:
-      latitude = float(latitude)
-      longitude = float(longitude)
-    except ValueError:
-      return { }, 500
-
-    params = { 'lat':latitude, 'lon':longitude }
-    headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/118.0' } # Otherwise we get invalid user agent
-    r = requests.get(url,params=params,headers=headers)
-    if r.status_code==200:
-      return r.json(), 200
-    else:
-      return { }, r.status_code
+    return getWeather()
 
 api.add_resource(Devices,'/api/v1.0/devices', endpoint = 'devices')
 api.add_resource(Device,'/api/v1.0/devices/<int:deviceid>', endpoint = 'device')
