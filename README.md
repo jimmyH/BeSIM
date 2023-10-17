@@ -4,6 +4,8 @@ A simulator for the cloud server the BeSMART thermostat/wifi box connects to.
 
 Note that this project is not affiliated to Riello SpA which produces and sells the BeSMART products.
 
+Meteorological data is kindly provided by: The Norwegian Meteorological Institute
+
 ## What is BeSMART?
 
 BeSMART allows you to connect multiple thermostats to your boiler and control them from your tablet or smartphone.
@@ -41,6 +43,9 @@ BeSIM can either be run as a standalone python3 script (tested on python3.9 only
 Or run as a container from docker/podman:
  - `docker build . -t besim:latest`
  - `docker run -it -p 80:80 -p 6199:6199/udp besim:latest`
+
+To have the server get the weather at the server location, you need to set your location using environment variables eg:
+ - `docker run -it -e LONGITUDE=1.234 -e LATITUDE=-1.234 -p 80:80 -p 6199:6199/udp besim:latest`
 
 The BeSMART thermostat connects:
  - api.besmart-home.com:6199 (udp)

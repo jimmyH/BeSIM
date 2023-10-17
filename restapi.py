@@ -29,8 +29,9 @@ def getUdpServer():
 
 @cached(cache=TTLCache(maxsize=1, ttl=3600), lock=RLock())
 def getWeather():
-  # Try and use the same provider as HomeAssistant
-  url = 'https://aa015h6buqvih86i1.api.met.no/weatherapi/locationforecast/2.0/complete'
+  # Uses met.no to get the weather at the servers' latitude, longitude
+  # See https://api.met.no/doc/TermsOfService and https://api.met.no/doc/License
+  url = 'https://api.met.no/weatherapi/locationforecast/2.0/complete'
 
   # Get the lat/long from environment
   latitude = os.getenv('LATITUDE',None)
@@ -46,7 +47,7 @@ def getWeather():
     return { }, 500
 
   params = { 'lat':latitude, 'lon':longitude }
-  headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/118.0' } # Otherwise we get invalid user agent
+  headers = { 'User-Agent': 'BeSim/0.1 github.com/jimmyH/BeSIM' }
   r = requests.get(url,params=params,headers=headers)
   if r.status_code==200:
     return r.json(), 200
