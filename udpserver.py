@@ -638,7 +638,39 @@ class UdpServer(threading.Thread):
           if len(roomStatus['days'])!=7 or wrapper.cloudsynclost:
             rooms_to_get_prog.add(room)
 
-      offset += 22   # No idea what these bytes are
+      # OpenTherm parameters
+      # From the manual we expect the following to be present somewhere:
+      # tSEt = set-point flow temperature calculated by the thermostat.
+      # tFLO = reading of the boiler flow sensor temperature.
+      # trEt = reading of the boiler return sensor temperature.
+      # tdH = reading of the boiler DHW sensor temperature.
+      # tFLU = reading of the boiler flues sensor temperature.
+      # tESt = reading of the boiler outdoor sensor temperature (fitted to the boiler or
+      # communicated by the web).
+      # MOdU = instantaneous percentage of modulation of boiler fan.
+      # FLOr = instantaneous domestic hot water flow rate.
+      # HOUr = hours worked in high condensation mode.
+      # PrES = central heating system pressure.
+      # tFL2 = reading of the heating flow sensor on second circuit
+
+      otFlags1, otFlags2 = struct.unpack_from('<BB',payload,offset)
+      offset += 2
+
+      boilerHeating = (otFlags1>>5) & 0x1
+      dhwMode = (otFlags1>>6) & 0x1
+
+      deviceStatus['boilerOn'] = boilerHeating
+      deviceStatus['dhwMode'] = dhwMode
+
+      otUnk1, otUnk2, tFLO, otUnk4, tdH, tESt, otUnk7, otUnk8, otUnk9, otUnk10 = struct.unpack_from('<HHHHHHHHHH',payload,offset)
+      offset += 20
+
+      deviceStatus['tFLO'] = tFLO
+      deviceStatus['tdH'] = tdH
+      deviceStatus['tESt'] = tESt
+
+      # Other params
+
       wifisignal, unk16, unk17, unk18, unk19, unk20 = struct.unpack_from('<BBHHHH',payload,offset)
       offset += 10
 
