@@ -12,6 +12,25 @@ from status import getPeerStatus, getRoomStatus, getDeviceStatus, getStatus
 
 logger = logging.getLogger(__name__)
 
+class Unpacker():
+  def __init__(self,buffer,offset=0):
+    self.buffer = buffer
+    self.offset = offset
+  def __call__(self,fmt):
+    rc = struct.unpack_from(fmt,self.buffer,self.offset)
+    self.offset += struct.calcsize(fmt)
+    return rc
+  def subbuf(self,length):
+    b = self.buffer[self.offset:self.offset+length]
+    self.offset += length
+    return b
+  def skip(self,length):
+    self.offset += length
+  def getOffset(self):
+    return self.offset
+  def setOffset(self,offset):
+    self.offset = offset
+
 #
 # Note:
 #    Downlink (DL) is from cloud server to Besmart device.
@@ -249,9 +268,8 @@ class Frame():
     return buf
 
   def decode(self,data):
-    offset = 0
-    hdr, length, self.seq = struct.unpack_from('<HHI',data,offset)
-    offset += 8
+    unpack = Unpacker(data)
+    hdr, length, self.seq = unpack('<HHI')
 
     if hdr!=MAGIC_HEADER:
       logger.warn(f'Invalid Header {hdr=:x}')
@@ -261,9 +279,9 @@ class Frame():
       logger.warn(f'Invalid Length {length=} {len(data)}')
       return None
 
-    self.payload = data[offset:offset+length]
-    offset += length
-    crc, ftr = struct.unpack_from('<HH',data,offset)
+    self.payload = unpack.subbuf(length)
+
+    crc, ftr = unpack('<HH')
 
     crcCalc = Crc16Xmodem.calc(self.payload)
     if crcCalc != crc:
@@ -302,9 +320,8 @@ class Wrapper():
     self.flags = None # for debug in case there's other useful data in here
 
   def decodeUL(self,data):
-    offset = 0
-    self.msgType, self.flags, msgLen = struct.unpack_from('<BBH',data,offset)
-    offset += 4
+    unpack = Unpacker(data)
+    self.msgType, self.flags, msgLen = unpack('<BBH')
     msgLen += 8   # Real message length
 
     # bits 0,3 are always 0
@@ -334,7 +351,7 @@ class Wrapper():
     if self.downlink!=0:
       logger.warn(f'Unexpected downlink flag')
 
-    return data[offset:offset+msgLen]
+    return unpack.subbuf(msgLen)
 
   def encodeDL(self,msgType,response,write):
     self.msgType = msgType
@@ -576,10 +593,10 @@ class UdpServer(threading.Thread):
     msgLen = len(payload)
     logger.info(f'{seq=} {wrapper} {length=} {msgLen=}')
 
+    unpack = Unpacker(payload)
+
     if wrapper.msgType==MsgId.STATUS:
-      offset = 0
-      cseq, unk1, unk2, deviceid = struct.unpack_from('<BBHI',payload,offset)
-      offset += 8
+      cseq, unk1, unk2, deviceid = unpack('<BBHI')
       logger.info(f'{cseq=:x} {unk1=:x} {unk2=:x} {deviceid=}')
 
       deviceStatus = getDeviceStatus(deviceid)
@@ -589,13 +606,11 @@ class UdpServer(threading.Thread):
       rooms_to_get_prog = set() # Set of rooms for which we need to get the current program
 
       for n in range(8):        # Supports up to 8 thermostats
-        room, byte1, byte2, temp, settemp, t3, t2, t1, maxsetp, minsetp = struct.unpack_from('<IBBhhhhhhh',payload,offset)
-        offset += 20
+        room, byte1, byte2, temp, settemp, t3, t2, t1, maxsetp, minsetp = unpack('<IBBhhhhhhh')
 
         mode = byte2>>4
         unk9 = byte2 & 0xf
-        byte3, byte4, unk13, tempcurve, heatingsetp = struct.unpack_from('<BBHBB',payload,offset)
-        offset += 6
+        byte3, byte4, unk13, tempcurve, heatingsetp = unpack('<BBHBB')
         sensorinfluence = (byte3>>3) & 0xf
         units = (byte3>>2) & 0x1
         advance = (byte3>>1) & 0x1
@@ -654,8 +669,7 @@ class UdpServer(threading.Thread):
       # PrES = central heating system pressure.
       # tFL2 = reading of the heating flow sensor on second circuit
 
-      otFlags1, otFlags2 = struct.unpack_from('<BB',payload,offset)
-      offset += 2
+      otFlags1, otFlags2 = unpack('<BB')
 
       boilerHeating = (otFlags1>>5) & 0x1
       dhwMode = (otFlags1>>6) & 0x1
@@ -663,8 +677,7 @@ class UdpServer(threading.Thread):
       deviceStatus['boilerOn'] = boilerHeating
       deviceStatus['dhwMode'] = dhwMode
 
-      otUnk1, otUnk2, tFLO, otUnk4, tdH, tESt, otUnk7, otUnk8, otUnk9, otUnk10 = struct.unpack_from('<hhhhhhhhhh',payload,offset)
-      offset += 20
+      otUnk1, otUnk2, tFLO, otUnk4, tdH, tESt, otUnk7, otUnk8, otUnk9, otUnk10 = unpack('<hhhhhhhhhh')
 
       deviceStatus['tFLO'] = tFLO
       deviceStatus['tdH'] = tdH
@@ -672,8 +685,7 @@ class UdpServer(threading.Thread):
 
       # Other params
 
-      wifisignal, unk16, unk17, unk18, unk19, unk20 = struct.unpack_from('<BBHHHH',payload,offset)
-      offset += 10
+      wifisignal, unk16, unk17, unk18, unk19, unk20 = unpack('<BBHHHH')
 
       deviceStatus['wifisignal'] = wifisignal
       deviceStatus['lastseen'] = int(time.time())
@@ -698,9 +710,7 @@ class UdpServer(threading.Thread):
         self.send_GET_PROG(addr,deviceStatus,deviceid,room,response=0)
 
     elif wrapper.msgType==MsgId.GET_PROG:
-      offset = 0
-      cseq, unk1, unk2, deviceid, room, unk3 = struct.unpack_from('<BBHIII',payload,offset)
-      offset += 16
+      cseq, unk1, unk2, deviceid, room, unk3 = unpack('<BBHIII')
 
       logger.info(f'{deviceid=} {room=}')
 
@@ -724,9 +734,7 @@ class UdpServer(threading.Thread):
         SignalCSeq(deviceStatus,cseq,unk3) # @todo Is there any meaningful data in the response?
 
     elif wrapper.msgType==MsgId.PING:
-      offset = 0
-      cseq, unk1, unk2, deviceid, unk3 = struct.unpack_from('<BBHIH',payload,offset)
-      offset += 10
+      cseq, unk1, unk2, deviceid, unk3 = unpack('<BBHIH')
 
       logger.info(f'{deviceid=}')
 
@@ -751,9 +759,7 @@ class UdpServer(threading.Thread):
       self.send_PING(addr,deviceid,response=1)
 
     elif wrapper.msgType==MsgId.REFRESH:
-      offset = 0
-      cseq, unk1, unk2, deviceid = struct.unpack_from('<BBHI',payload,offset)
-      offset += 8
+      cseq, unk1, unk2, deviceid = unpack('<BBHI')
       # Padding at end ??
       logger.info(f'{deviceid=}')
 
@@ -774,12 +780,10 @@ class UdpServer(threading.Thread):
         SignalCSeq(deviceStatus,cseq,unk2) # @todo Is there any meaninngful data in the response?
 
     elif wrapper.msgType==MsgId.DEVICE_TIME:
-      offset = 0
       # It looks like only the 1st byte in DEVICE_TIME is valid
       # 0 = no dst 1 = dst ?
       # The rest of the payload appears to be garbage?
-      cseq, unk1, unk2, deviceid, val, unk3, unk4, unk5 = struct.unpack_from('<BBHIBBHI',payload,offset)
-      offset += 16
+      cseq, unk1, unk2, deviceid, val, unk3, unk4, unk5 = unpack('<BBHIBBHI')
       logger.info(f'{deviceid=} {val=}')
 
       deviceStatus = getDeviceStatus(deviceid)
@@ -808,9 +812,7 @@ class UdpServer(threading.Thread):
         SignalCSeq(deviceStatus,cseq,val)
 
     elif wrapper.msgType==MsgId.OUTSIDE_TEMP:
-      offset = 0
-      cseq, unk1, unk2, deviceid, val = struct.unpack_from('<BBHIB',payload,offset)
-      offset += 9
+      cseq, unk1, unk2, deviceid, val = unpack('<BBHIB')
 
       logger.info(f'{deviceid=} {val=}')
 
@@ -835,9 +837,7 @@ class UdpServer(threading.Thread):
         SignalCSeq(deviceStatus,cseq,val)
 
     elif wrapper.msgType==MsgId.PROG_END:
-      offset = 0
-      cseq, unk1, unk2, deviceid, room, unk3 = struct.unpack_from('<BBHIIH',payload,offset)
-      offset += 14
+      cseq, unk1, unk2, deviceid, room, unk3 = unpack('<BBHIIH')
       logger.info(f'{deviceid=} {room=} {unk3=:x}')
 
       deviceStatus = getDeviceStatus(deviceid)
@@ -861,9 +861,7 @@ class UdpServer(threading.Thread):
         self.send_PROG_END(addr,deviceid,room,response=1)
 
     elif wrapper.msgType==MsgId.SWVERSION:
-      offset = 0
-      cseq, unk1, unk2, deviceid, version = struct.unpack_from('<BBHI13s',payload,offset)
-      offset += 21
+      cseq, unk1, unk2, deviceid, version = unpack('<BBHI13s')
       logger.info(f'{deviceid=} {version=}')
       deviceStatus = getDeviceStatus(deviceid)
       peerStatus['devices'].add(deviceid)
@@ -886,13 +884,10 @@ class UdpServer(threading.Thread):
         SignalCSeq(deviceStatus,cseq,str(version))
 
     elif wrapper.msgType==MsgId.PROGRAM:
-      offset = 0
-      cseq, unk1, unk2, deviceid, room, day = struct.unpack_from('<BBHIIH',payload,offset)
-      offset += 14
+      cseq, unk1, unk2, deviceid, room, day = unpack('<BBHIIH')
       prog = []
       for i in range(24):
-        p, = struct.unpack_from('<B',payload,offset)
-        offset += 1
+        p, = unpack('<B')
         prog.append(p)
       logger.info(f'{deviceid=} {room=} {day=} prog={ [ hex(l) for l in prog ] }')
 
@@ -920,22 +915,16 @@ class UdpServer(threading.Thread):
     elif self.set_messages_payload_size(wrapper.msgType) is not None:
       # Handles generic MsgId.SET_* messages
       # @todo can any of the MsgId.SET_* values be negative?
-      offset = 0
-
-      cseq, flags, unk2, deviceid, room = struct.unpack_from('<BBHII',payload,offset)
-      offset += 12
+      cseq, flags, unk2, deviceid, room = unpack('<BBHII')
 
       numBytes = self.set_messages_payload_size(wrapper.msgType)
 
       if numBytes==4:
-        value, = struct.unpack_from('<I',payload,offset)
-        offset+=numBytes
+        value, = unpack('<I')
       elif numBytes==2:
-        value, = struct.unpack_from('<H',payload,offset)
-        offset+=numBytes
+        value, = unpack('<H')
       elif numBytes==1:
-        value, = struct.unpack_from('<B',payload,offset)
-        offset+=numBytes
+        value, = unpack('<B')
       else:
         logger.warn(f'Unrecognised MsgType {wrapper.msgType:x}')
         value = None
@@ -991,9 +980,9 @@ class UdpServer(threading.Thread):
     else:
       logger.warn(f'Unhandled message {wrapper.msgType}')
 
-    if offset!=msgLen:
+    if unpack.getOffset()!=msgLen:
       # Check we have consumed the complete message we received
-      logger.warn(f'Internal error {offset=} {msgLen=}')
+      logger.warn(f'Internal error offset={unpack.getOffset()} {msgLen=}')
 
 if __name__ == '__main__':
   udpServer = UdpServer( ('',6199) )
