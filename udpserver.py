@@ -472,6 +472,7 @@ class UdpServer(threading.Thread):
     if numBytes is None:
       numBytes = self.set_messages_payload_size(msgType)
 
+    # @todo can any of the MsgId.SET_* values be negative?
     if numBytes==4:
       payload += struct.pack('<I',value)
     elif numBytes==2:
@@ -588,7 +589,7 @@ class UdpServer(threading.Thread):
       rooms_to_get_prog = set() # Set of rooms for which we need to get the current program
 
       for n in range(8):        # Supports up to 8 thermostats
-        room, byte1, byte2, temp, settemp, t3, t2, t1, maxsetp, minsetp = struct.unpack_from('<IBBHHHHHHH',payload,offset)
+        room, byte1, byte2, temp, settemp, t3, t2, t1, maxsetp, minsetp = struct.unpack_from('<IBBhhhhhhh',payload,offset)
         offset += 20
 
         mode = byte2>>4
@@ -662,7 +663,7 @@ class UdpServer(threading.Thread):
       deviceStatus['boilerOn'] = boilerHeating
       deviceStatus['dhwMode'] = dhwMode
 
-      otUnk1, otUnk2, tFLO, otUnk4, tdH, tESt, otUnk7, otUnk8, otUnk9, otUnk10 = struct.unpack_from('<HHHHHHHHHH',payload,offset)
+      otUnk1, otUnk2, tFLO, otUnk4, tdH, tESt, otUnk7, otUnk8, otUnk9, otUnk10 = struct.unpack_from('<hhhhhhhhhh',payload,offset)
       offset += 20
 
       deviceStatus['tFLO'] = tFLO
@@ -917,6 +918,8 @@ class UdpServer(threading.Thread):
         self.send_PROGRAM(addr,deviceStatus,deviceid,room,day,prog,response=1)
 
     elif self.set_messages_payload_size(wrapper.msgType) is not None:
+      # Handles generic MsgId.SET_* messages
+      # @todo can any of the MsgId.SET_* values be negative?
       offset = 0
 
       cseq, flags, unk2, deviceid, room = struct.unpack_from('<BBHII',payload,offset)
