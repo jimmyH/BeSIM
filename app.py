@@ -3,11 +3,18 @@ import os
 
 from udpserver import UdpServer
 from restapi import app
+from database import Database
 
 if __name__ == '__main__':
 
   fmt = '[%(asctime)s %(filename)s->%(funcName)s():%(lineno)s] %(levelname)s: %(message)s'
   logging.basicConfig(format=fmt,level=logging.DEBUG)
+
+  database_name=os.getenv('BESIM_DATABASE', 'besim.db')
+  database = Database(name=database_name)
+  database.create_tables()
+  database.purge(365*2) # @todo currently only purging old records at startup
+
   udpServer = UdpServer( ('',6199) )
   udpServer.start()
   app.config['udpServer'] = udpServer

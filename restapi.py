@@ -9,8 +9,12 @@ import requests
 from cachetools import cached, TTLCache
 from threading import RLock
 
+from webargs import fields,validate
+from webargs.flaskparser import use_kwargs,use_args
+
 from udpserver import MsgId
 from status import getStatus,getDeviceStatus,getRoomStatus
+from database import Database
 
 logger = logging.getLogger(__name__)
 
@@ -48,9 +52,15 @@ def getWeather():
 
   params = { 'lat':latitude, 'lon':longitude }
   headers = { 'User-Agent': 'BeSim/0.1 github.com/jimmyH/BeSIM' }
+
   r = requests.get(url,params=params,headers=headers)
   if r.status_code==200:
-    return r.json(), 200
+    js = r.json()
+
+    temp = js['properties']['timeseries'][0]['data']['instant']['details']['air_temperature']
+    Database().log_outside_temperature(temp)
+
+    return js, 200
   else:
     return { }, r.status_code
 
@@ -112,7 +122,12 @@ class Device(Resource):
 
 class Rooms(Resource):
   def get(self, deviceid):
-    return list(getDeviceStatus(deviceid)['rooms'].keys())
+    rooms = []
+    # We only return rooms we have seen in the last 10 minutes
+    for k,v in getDeviceStatus(deviceid)['rooms'].items():
+      if 'lastseen' in v and v['lastseen'] > time.time()-600:
+        rooms.append(k)
+    return rooms
 
 class Room(Resource):
   def get(self, deviceid, roomid):
@@ -196,6 +211,27 @@ class Weather(Resource):
   def get(self):
     return getWeather()
 
+class WeatherHistory(Resource):
+  @use_args(
+    {
+      "from" : fields.Str(),
+      "to" : fields.Str(),
+    },
+    location = "query")
+  def get(self, query):
+    getWeather()
+    return Database().get_outside_temperature(query.get('from',None),query.get('to',None))
+
+class TemperatureHistory(Resource):
+  @use_args(
+    {
+      "from" : fields.Str(),
+      "to" : fields.Str(),
+    },
+    location = "query")
+  def get(self, query, deviceid, roomid):
+    return Database().get_temperature(roomid,query.get('from',None),query.get('to',None))
+
 api.add_resource(Devices,'/api/v1.0/devices', endpoint = 'devices')
 api.add_resource(Device,'/api/v1.0/devices/<int:deviceid>', endpoint = 'device')
 
@@ -225,6 +261,8 @@ api.add_resource(ReadonlyParamResource, '/api/v1.0/devices/<int:deviceid>/rooms/
 api.add_resource(ReadonlyParamResource, '/api/v1.0/devices/<int:deviceid>/rooms/<int:roomid>/settemp', endpoint = 'settemp', resource_class_kwargs = { 'param' : 'settemp' })
 api.add_resource(ReadonlyParamResource, '/api/v1.0/devices/<int:deviceid>/rooms/<int:roomid>/cmdissued', endpoint = 'cmdissued', resource_class_kwargs = { 'param' : 'cmdissued' })
 
+api.add_resource(TemperatureHistory, '/api/v1.0/devices/<int:deviceid>/rooms/<int:roomid>/history', endpoint = 'temperaturehistory')
+
 api.add_resource(Peers,'/api/v1.0/peers', endpoint = 'peers')
 
 api.add_resource(Days,'/api/v1.0/devices/<int:deviceid>/rooms/<int:roomid>/days', endpoint = 'days')
@@ -232,6 +270,8 @@ api.add_resource(Day,'/api/v1.0/devices/<int:deviceid>/rooms/<int:roomid>/days/<
 
 #api.add_resource(Weather,'/api/v1.0/weather/<float(signed=True):latitude>/<float(signed=True):longitude>', endpoint='weather')
 api.add_resource(Weather,'/api/v1.0/weather', endpoint='weather')
+
+api.add_resource(WeatherHistory,'/api/v1.0/weather/history', endpoint='history')
 
 # OpenTherm parameters
 for endpoint in [ 'boilerOn', 'dhwMode', 'tFLO', 'trEt', 'tdH', 'tFLU', 'tESt', 'MOdU', 'FLOr', 'HOUr', 'PrES', 'tFL2' ]:

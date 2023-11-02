@@ -9,6 +9,7 @@ import hexdump
 import traceback
 
 from status import getPeerStatus, getRoomStatus, getDeviceStatus, getStatus
+from database import Database
 
 logger = logging.getLogger(__name__)
 
@@ -395,9 +396,11 @@ class UdpServer(threading.Thread):
     threading.Thread.__init__(self)
     self.addr = addr
     self.stop = False
+    self.db = Database()
 
   def run(self):
     logger.info('UDP server is running')
+    self.dbConn = self.db.get_connection()
     self.sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
     self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     self.sock.bind(self.addr)
@@ -618,8 +621,8 @@ class UdpServer(threading.Thread):
         cmdissued = (byte4>>1) & 0x1
         winter = byte4 & 0x1
 
-        # Assume that if byte1 is zero, then no thermostat is connected for that room
-        if byte1!=0:
+        # Assume that if room is zero, 0xffffffff or byte1 is zero, then no thermostat is connected for that room
+        if room!=0 and room!=0xffffffff and byte1!=0:
           logger.info(f'{room=:x} {byte1=:x} {mode=} {temp=} {settemp=} {t3=} {t2=} {t1=} {maxsetp=} {minsetp=} {sensorinfluence=} {units=} {advance=} {boost=} {cmdissued=} {winter=} {tempcurve=} {heatingsetp=}')
           if byte1==0x8f:
             heating = 1
@@ -650,6 +653,10 @@ class UdpServer(threading.Thread):
           roomStatus['winter'] = winter
 
           roomStatus['lastseen'] = int(time.time())
+
+          if self.db is not None:
+            # @todo log other parameters..
+            self.db.log_temperature(room,temp,settemp,conn=self.dbConn)
 
           if len(roomStatus['days'])!=7 or wrapper.cloudsynclost:
             rooms_to_get_prog.add(room)
@@ -987,3 +994,4 @@ class UdpServer(threading.Thread):
 if __name__ == '__main__':
   udpServer = UdpServer( ('',6199) )
   udpServer.start()
+
