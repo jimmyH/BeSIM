@@ -656,7 +656,7 @@ class UdpServer(threading.Thread):
 
           if self.db is not None:
             # @todo log other parameters..
-            self.db.log_temperature(room,temp,settemp,conn=self.dbConn)
+            self.db.log_temperature(room,temp/10.0,settemp/10.0,conn=self.dbConn)
 
           if len(roomStatus['days'])!=7 or wrapper.cloudsynclost:
             rooms_to_get_prog.add(room)
