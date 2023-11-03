@@ -32,6 +32,14 @@ class Unpacker():
   def setOffset(self,offset):
     self.offset = offset
 
+class HeatingMode(IntEnum):
+  AUTO = 0
+  MANUAL = 1
+  HOLIDAY = 2
+  PARTY = 3
+  OFF = 4
+  DHW = 5
+
 #
 # Note:
 #    Downlink (DL) is from cloud server to Besmart device.
@@ -570,6 +578,25 @@ class UdpServer(threading.Thread):
     logger.info(f'To {addr} {len(buf)} bytes : {hexdump.dump(buf)}')
     self.sock.sendto(buf,addr)
 
+  def send_FAKE_BOOST(self,addr,device,deviceid,room,val,wait=0):
+    # I cannot see a way to control BOOST mode remotely. Instead we implement a fake boost mode
+    # Switch to PARTY mode
+    roomStatus = getRoomStatus(deviceid,room)
+    if 'fakeboost' in roomStatus:
+      if val == 0 and roomStatus['fakeboost']!=0 and roomStatus['mode']==HeatingMode.PARTY:
+        rc = self.send_SET(addr,device,deviceid,room,MsgId.SET_MODE,HeatingMode.AUTO,response=0,write=1,wait=wait)
+        if rc==0:
+          roomStatus['fakeboost'] = 0
+        return rc
+      elif val == 1 and roomStatus['fakeboost']==0 and roomStatus['mode']==HeatingMode.AUTO and roomStatus['boost']==0 and roomStatus['advance']==0:
+        rc = self.send_SET(addr,device,deviceid,room,MsgId.SET_MODE,HeatingMode.PARTY,response=0,write=1,wait=wait)
+        if rc==3:
+          roomStatus['fakeboost'] = time.time() + 3600
+          return 1
+        else:
+          return 0
+    return 0
+
   def set_messages_payload_size(self,msgType):
     if msgType==MsgId.SET_T3 or msgType==MsgId.SET_T2 or msgType==MsgId.SET_T1 or msgType==MsgId.SET_MIN_HEAT_SETP or msgType==MsgId.SET_MAX_HEAT_SETP:
       return 2
@@ -660,6 +687,13 @@ class UdpServer(threading.Thread):
 
           if len(roomStatus['days'])!=7 or wrapper.cloudsynclost:
             rooms_to_get_prog.add(room)
+
+          # Handle fake boost timer
+          if 'fakeboost' in roomStatus:
+            if roomStatus['fakeboost']!=0 and roomStatus['fakeboost']<time.time():
+              self.send_FAKE_BOOST(addr,deviceid,room,0)
+          else:
+            roomStatus['fakeboost'] = 0
 
       # OpenTherm parameters
       # From the manual we expect the following to be present somewhere:

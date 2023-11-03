@@ -162,6 +162,21 @@ class WriteableParamResource(Resource):
     else:
       return { 'message' : 'OK' }, 200
 
+class FakeBoostResource(Resource):
+  def get(self, deviceid, roomid):
+    roomStatus = getRoomStatus(deviceid,roomid)
+    return roomStatus['fakeboost']
+
+  def put(self, deviceid, roomid):
+    data = request.json
+    val = data
+    addr = getDeviceStatus(deviceid)['addr']
+    new_val = getUdpServer().send_FAKE_BOOST(addr,getDeviceStatus(deviceid),deviceid,roomid,val,wait=1)
+    if new_val!=val:
+      return { 'message' : 'ERROR' }, 500
+    else:
+      return { 'message' : 'OK' }, 200
+
 class Days(Resource):
   def get(self, deviceid, roomid):
     return list(getRoomStatus(deviceid,roomid)['days'].keys())
@@ -255,7 +270,8 @@ api.add_resource(WriteableParamResource, '/api/v1.0/devices/<int:deviceid>/rooms
 api.add_resource(WriteableParamResource, '/api/v1.0/devices/<int:deviceid>/rooms/<int:roomid>/advance', endpoint = 'advance', resource_class_kwargs = { 'param' : 'advance', 'msgId' : MsgId.SET_ADVANCE })
 api.add_resource(WriteableParamResource, '/api/v1.0/devices/<int:deviceid>/rooms/<int:roomid>/mode', endpoint = 'mode', resource_class_kwargs = { 'param' : 'mode', 'msgId' : MsgId.SET_MODE })
 
-api.add_resource(ReadonlyParamResource, '/api/v1.0/devices/<int:deviceid>/rooms/<int:roomid>/boost', endpoint = 'boost', resource_class_kwargs = { 'param' : 'boost' }) # @todo Need to find how to set this..
+api.add_resource(ReadonlyParamResource, '/api/v1.0/devices/<int:deviceid>/rooms/<int:roomid>/boost', endpoint = 'boost', resource_class_kwargs = { 'param' : 'boost' }) # Thermostat does not support setting boost
+api.add_resource(FakeBoostResource, '/api/v1.0/devices/<int:deviceid>/rooms/<int:roomid>/fakeboost', endpoint = 'fakeboost') # Use fake boost to simulate boost behaviour
 
 api.add_resource(ReadonlyParamResource, '/api/v1.0/devices/<int:deviceid>/rooms/<int:roomid>/temp', endpoint = 'temp', resource_class_kwargs = { 'param' : 'temp' })
 api.add_resource(ReadonlyParamResource, '/api/v1.0/devices/<int:deviceid>/rooms/<int:roomid>/settemp', endpoint = 'settemp', resource_class_kwargs = { 'param' : 'settemp' })
@@ -282,15 +298,25 @@ for endpoint in [ 'boilerOn', 'dhwMode', 'tFLO', 'trEt', 'tdH', 'tFLU', 'tESt', 
 #
 
 class TestResource(Resource):
-  def get(self, deviceid, roomid):
-    id = request.args.get('id')
-    if id is not None:
-      id = int(id,0)
+  @use_kwargs(
+    {
+      "msgId" : fields.Str(),
+      "numBytes" : fields.Int(),
+    },
+    location = "query")
+  def get(self, deviceid, roomid, msgId=None, numBytes=None):
+    if msgId is not None:
+      msgId = int(msgId,0)
+      print(f'Setting id={id}')
     else:
-      id = MsgId.SET_ADVANCE
+      return None
+
+    if numBytes is not None:
+      print(f'Setting numBytes={numBytes}')
+
     val = 0
     addr = getDeviceStatus(deviceid)['addr']
-    return getUdpServer().send_SET(addr,getDeviceStatus(deviceid),deviceid,roomid,id,val,response=0,write=0,wait=1)
+    return getUdpServer().send_SET(addr,getDeviceStatus(deviceid),deviceid,roomid,msgId,val,response=0,write=0,wait=1,numBytes=numBytes)
 
 #api.add_resource(TestResource,'/api/v1.0/devices/<int:deviceid>/rooms/<int:roomid>/test', endpoint = 'test')
 
