@@ -13,6 +13,9 @@ from database import Database
 
 logger = logging.getLogger(__name__)
 
+FAKEBOOST_TEMPERATURE_RISE=6     # degC * 10
+FAKEBOOST_DURATION=1800          # seconds
+
 class Unpacker():
   def __init__(self,buffer,offset=0):
     self.buffer = buffer
@@ -492,6 +495,7 @@ class UdpServer(threading.Thread):
     self.sock.sendto(buf,addr)
 
   def send_SET(self,addr,device,deviceid,room,msgType,value,response=0,write=0,wait=0,numBytes=None):
+    logger.info(f'send_SET addr={addr} deviceid={deviceid} room={room} msgType={msgType} value={value}')
     cseq = NextCSeq(device,wait)
     flags = 0x0 # Always zero in DL
     unk2 = 0x0
@@ -578,23 +582,30 @@ class UdpServer(threading.Thread):
     logger.info(f'To {addr} {len(buf)} bytes : {hexdump.dump(buf)}')
     self.sock.sendto(buf,addr)
 
-  def send_FAKE_BOOST(self,addr,device,deviceid,room,val,wait=0):
+  def send_FAKE_BOOST(self,addr,device,deviceid,room,val):
     # I cannot see a way to control BOOST mode remotely. Instead we implement a fake boost mode
-    # Switch to PARTY mode
+    # Switch to PARTY mode and increase temperature
+    # Note that this *always* waits
     roomStatus = getRoomStatus(deviceid,room)
     if 'fakeboost' in roomStatus:
-      if val == 0 and roomStatus['fakeboost']!=0 and roomStatus['mode']==HeatingMode.PARTY:
-        rc = self.send_SET(addr,device,deviceid,room,MsgId.SET_MODE,HeatingMode.AUTO,response=0,write=1,wait=wait)
-        if rc==0:
-          roomStatus['fakeboost'] = 0
-        return rc
-      elif val == 1 and roomStatus['fakeboost']==0 and roomStatus['mode']==HeatingMode.AUTO and roomStatus['boost']==0 and roomStatus['advance']==0:
-        rc = self.send_SET(addr,device,deviceid,room,MsgId.SET_MODE,HeatingMode.PARTY,response=0,write=1,wait=wait)
-        if rc==3:
-          roomStatus['fakeboost'] = time.time() + 3600
-          return 1
-        else:
-          return 0
+      if val == 0 and roomStatus['fakeboost']!=0 and roomStatus['mode']==HeatingMode.PARTY and roomStatus['settemp']>=roomStatus['t1']:
+        new_t3 = roomStatus['t3'] - FAKEBOOST_TEMPERATURE_RISE
+        rc = self.send_SET(addr,device,deviceid,room,MsgId.SET_T3,new_t3,response=0,write=1,wait=1)
+        if rc==new_t3:
+          rc = self.send_SET(addr,device,deviceid,room,MsgId.SET_MODE,HeatingMode.AUTO,response=0,write=1,wait=1)
+          if rc==0:
+            roomStatus['fakeboost'] = 0
+          return rc
+      elif val == 1 and roomStatus['fakeboost']==0 and roomStatus['mode']==HeatingMode.AUTO and roomStatus['boost']==0 and roomStatus['advance']==0 and roomStatus['settemp']>=roomStatus['t1']:
+        new_t3 = roomStatus['t3'] + FAKEBOOST_TEMPERATURE_RISE
+        rc = self.send_SET(addr,device,deviceid,room,MsgId.SET_T3,new_t3,response=0,write=1,wait=1)
+        if rc==new_t3:
+          rc = self.send_SET(addr,device,deviceid,room,MsgId.SET_MODE,HeatingMode.PARTY,response=0,write=1,wait=1)
+          if rc==3:
+            roomStatus['fakeboost'] = time.time() + FAKEBOOST_DURATION
+            return 1
+          else:
+            return 0
     return 0
 
   def set_messages_payload_size(self,msgType):
@@ -683,7 +694,8 @@ class UdpServer(threading.Thread):
 
           if self.db is not None:
             # @todo log other parameters..
-            self.db.log_temperature(room,temp/10.0,settemp/10.0,conn=self.dbConn)
+            self.db.log_temperature(room,temp/10.0,settemp/10.0,heating,conn=self.dbConn)
+            self.dbConn.commit()
 
           if len(roomStatus['days'])!=7 or wrapper.cloudsynclost:
             rooms_to_get_prog.add(room)
@@ -691,7 +703,11 @@ class UdpServer(threading.Thread):
           # Handle fake boost timer
           if 'fakeboost' in roomStatus:
             if roomStatus['fakeboost']!=0 and roomStatus['fakeboost']<time.time():
-              self.send_FAKE_BOOST(addr,deviceid,room,0)
+              # Call send_FAKE_BOOST but this needs to be done from a new thread
+              # because it is blocking.
+              #self.send_FAKE_BOOST(addr,deviceStatus,deviceid,room,0)
+              thread = threading.Thread(target=self.send_FAKE_BOOST, args=(addr,deviceStatus,deviceid,room,0))
+              thread.start()
           else:
             roomStatus['fakeboost'] = 0
 

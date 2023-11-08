@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 
 from udpserver import UdpServer
 from restapi import app
@@ -12,7 +13,8 @@ if __name__ == '__main__':
 
   database_name=os.getenv('BESIM_DATABASE', 'besim.db')
   database = Database(name=database_name)
-  database.create_tables()
+  if not database.check_migrations():
+    sys.exit(1) # error should already have been logged
   database.purge(365*2) # @todo currently only purging old records at startup
 
   udpServer = UdpServer( ('',6199) )

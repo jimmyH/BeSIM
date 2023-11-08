@@ -171,7 +171,7 @@ class FakeBoostResource(Resource):
     data = request.json
     val = data
     addr = getDeviceStatus(deviceid)['addr']
-    new_val = getUdpServer().send_FAKE_BOOST(addr,getDeviceStatus(deviceid),deviceid,roomid,val,wait=1)
+    new_val = getUdpServer().send_FAKE_BOOST(addr,getDeviceStatus(deviceid),deviceid,roomid,val)
     if new_val!=val:
       return { 'message' : 'ERROR' }, 500
     else:

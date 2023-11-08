@@ -20,16 +20,24 @@ class DatabaseConnection:
 
   def connect(self):
     if self.databaseName is not None and self.conn is None:
-      self.conn = sqlite3.connect(self.databaseName)
+      self.conn = sqlite3.connect(self.databaseName,autocommit=False) # PEP 249 compliant Python3.12+
     return self.conn
 
-  def close(self):
+  def close(self,commit=False):
     if self.conn is not None:
       self.conn.close()
       self.conn = None
 
   def getConn(self):
     return self.conn
+
+  def commit(self):
+    if self.getConn() is not None:
+      self.getConn().commit()
+
+  def rollback(self):
+    if self.getConn() is not None:
+      self.getConn().rollback()
 
   def run_sql(self,sql,values=None,log=False) -> List:
     if values is None:
@@ -48,6 +56,16 @@ class DatabaseConnection:
       if log:
         logger.info(result)
       return result
+    else:
+      return None
+
+  def fetchmany(self,sql,values=None,log=False) -> List:
+    return self.run_sql(sql,values,log)
+
+  def fetchone(self,sql,values=None,log=False):
+    rc = self.run_sql(sql,values,log)
+    if rc is not None and len(rc)>0:
+      return rc[0]
     else:
       return None
 

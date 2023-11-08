@@ -36,7 +36,7 @@ Note: that currently when you modify a value the API may return the old value fo
 
 ## How do I use BeSIM?
 
-BeSIM can either be run as a standalone python3 script (tested on python3.9 only).
+BeSIM can either be run as a standalone python3 script (tested on python3.12 only).
  - It is recommended to run from a virtual environment, and you can install the dependencies from requirements.txt `pip install -r requirements.txt`.
  - To start the server, just run 'python app.py'.
 
