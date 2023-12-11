@@ -18,8 +18,11 @@ It consists of two components:
  - A UDP Server which handles the messaging to/from the BeSMART wifi box.
  - A REST API which allows you to get/set parameters from the BeSMART thermostats.
 
-The intent is that you will be able to use a Home Assistant custom component to control your thermostat(s), but currently this has not been implemented.
-A (very) basic angular app can also be used to control the thermostat(s), see https://github.com/jimmyH/BeSIM-GUI
+A few ways you can control the thermostat:
+ - via the REST API (see curl examples below)
+ - via Home Assistant, see https://github.com/jimmyH/ha-besim
+ - via a (very) basic angular app, see https://github.com/jimmyH/BeSIM-GUI
+ - via an Alexa Skill, if anyone is interested I'll find some time to create an example repository
 
 ## Caveats
 
@@ -46,6 +49,9 @@ Or run as a container from docker/podman:
 
 To have the server get the weather at the server location, you need to set your location using environment variables eg:
  - `docker run -it -e LONGITUDE=1.234 -e LATITUDE=-1.234 -p 80:80 -p 6199:6199/udp besim:latest`
+
+The server logs the thermostat status in an sqlite3 database. You can make this persistent by using a docker volume, eg:
+ - `docker run -it -e LONGITUDE=1.234 -e LATITUDE=-1.234 -e BESIM_DATABASE=/database/besim.db -v besim_database:/database -p 80:80 -p 6199:6199/udp besim:latest`
 
 The BeSMART thermostat connects:
  - api.besmart-home.com:6199 (udp)
