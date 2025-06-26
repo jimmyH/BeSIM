@@ -655,13 +655,14 @@ class UdpServer(threading.Thread):
         sensorinfluence = (byte3>>3) & 0xf
         units = (byte3>>2) & 0x1
         advance = (byte3>>1) & 0x1
+        lowbattery = byte3 & 0x1
         boost = (byte4>>2) & 0x1
         cmdissued = (byte4>>1) & 0x1
         winter = byte4 & 0x1
 
         # Assume that if room is zero, 0xffffffff or byte1 is zero, then no thermostat is connected for that room
         if room!=0 and room!=0xffffffff and byte1!=0:
-          logger.info(f'{room=:x} {byte1=:x} {mode=} {temp=} {settemp=} {t3=} {t2=} {t1=} {maxsetp=} {minsetp=} {sensorinfluence=} {units=} {advance=} {boost=} {cmdissued=} {winter=} {tempcurve=} {heatingsetp=}')
+          logger.info(f'{room=:x} {byte1=:x} {mode=} {temp=} {settemp=} {t3=} {t2=} {t1=} {maxsetp=} {minsetp=} {sensorinfluence=} {units=} {advance=} {lowbattery=} {boost=} {cmdissued=} {winter=} {tempcurve=} {heatingsetp=}')
           if byte1==0x8f:
             heating = 1
           elif byte1==0x83:
@@ -686,11 +687,14 @@ class UdpServer(threading.Thread):
           roomStatus['sensorinfluence'] = sensorinfluence
           roomStatus['units'] = units
           roomStatus['advance'] = advance
+          roomStatus['lowbattery'] = lowbattery
           roomStatus['boost'] = boost
           roomStatus['cmdissued'] = cmdissued
           roomStatus['winter'] = winter
 
           roomStatus['lastseen'] = int(time.time())
+
+          roomStatus['unkl3'] = unk13
 
           if self.db is not None:
             # @todo log other parameters..
@@ -740,12 +744,26 @@ class UdpServer(threading.Thread):
       deviceStatus['tdH'] = tdH
       deviceStatus['tESt'] = tESt
 
+      deviceStatus['otUnk1'] = otUnk1
+      deviceStatus['otUnk2'] = otUnk2
+      deviceStatus['otUnk4'] = otUnk4
+      deviceStatus['otUnk7'] = otUnk7
+      deviceStatus['otUnk8'] = otUnk8
+      deviceStatus['otUnk9'] = otUnk9
+      deviceStatus['otUnk10'] = otUnk10
+
       # Other params
 
       wifisignal, unk16, unk17, unk18, unk19, unk20 = unpack('<BBHHHH')
 
       deviceStatus['wifisignal'] = wifisignal
       deviceStatus['lastseen'] = int(time.time())
+
+      deviceStatus['unk16'] = unk16
+      deviceStatus['unk17'] = unk17
+      deviceStatus['unk18'] = unk18
+      deviceStatus['unk19'] = unk19
+      deviceStatus['unk20'] = unk20
 
       logger.info(getStatus())
 
