@@ -79,8 +79,23 @@ class MsgId(IntEnum):
   SET_T2 = 0x0c
   SET_T1 = 0x0d
 
-  # 0x0e    Unknown (from test probe: deviceid, roomid) (invalid)
-  # 0x0f    Unknown (from test probe: deviceid, long message with lots of 0x0 followed by lots of 0xff) Could this be OpenTherm parameters?
+  #
+  # OpenTherm pass-through: the cloud sends one OpenTherm frame to the boiler through the wifi box
+  # and gets the boiler's answer back (used by the BeSMART app's boiler information screen).
+  # Payload after deviceid: OpenTherm msg type (0 READ-DATA, 1 WRITE-DATA; answers 4 READ-ACK,
+  # 5 WRITE-ACK, 6 DATA-INVALID, 7 UNKNOWN-DATA-ID), data id, value high byte, value low byte.
+  # Only works with an OpenTherm connection between the wifi box and the boiler.
+  # DL initiated (cseq 0xff, write=1)
+  #
+  OPENTHERM = 0x0e
+
+  #
+  # Fault/event history: 30 records of 8 bytes - year (uint16), month, day, hour, minute, 0x00, code
+  # (shown as "Error codes" in the BeSMART app)
+  # DL initiated
+  #
+  FAULT_HISTORY = 0x0f
+
   # 0x10    Unknown (from test probe: deviceid) (invalid)
   # 0x11    Unknown (from test probe: deviceid,byte=0xff)
 
@@ -453,6 +468,33 @@ class UdpServer(threading.Thread):
     self.sock.sendto(buf,addr)
     return WaitCSeq(device,cseq)
 
+  def send_OPENTHERM(self,addr,deviceid,data_id,hi=0,lo=0,write=False):
+    # Send one OpenTherm READ-DATA (or WRITE-DATA) frame to the boiler through the wifi box.
+    # hi carries the index for indexed data ids (e.g. 11 = TSP, 13 = fault history buffer).
+    # The wifi box fits these between its own OpenTherm traffic and does not always answer:
+    # repeat the request until the answer arrives (the cloud does the same, about once a second),
+    # but do not flood it - the wifi box then stops sending its status reports for a while.
+    # The answer is stored by handleMsg in deviceStatus['ot'] (and deviceStatus['ot_indexed']).
+    payload = struct.pack('<BBHI',UNUSED_CSEQ,0,0,deviceid) + bytes([1 if write else 0,data_id & 0xff,hi & 0xff,lo & 0xff])
+    if write:
+      logger.warning(f'OpenTherm WRITE id={data_id} hi={hi} lo={lo}')
+    wrapper = Wrapper(payload=payload)
+    payload = wrapper.encodeDL(MsgId.OPENTHERM,0,write=1)
+    frame = Frame(payload=payload)
+    self.sock.sendto(frame.encode(),addr)
+
+  def send_PROBE(self,addr,device,deviceid,msgType,extra=b''):
+    # Read-only probe (write=0) of an arbitrary message type, to explore the protocol.
+    # Replies to message types BeSIM does not handle are logged raw by handleMsg.
+    cseq = NextCSeq(device,0)
+    payload = struct.pack('<BBHI',cseq,0,0,deviceid) + extra
+    wrapper = Wrapper(payload=payload)
+    payload = wrapper.encodeDL(msgType,0,write=0)
+    logger.info(f'Sending probe {wrapper}')
+    frame = Frame(payload=payload)
+    self.sock.sendto(frame.encode(),addr)
+    return cseq
+
   def send_SWVERSION(self,addr,device,deviceid,response=0,wait=0):
     cseq = NextCSeq(device,wait)
     unk1 = 0x0 # Always zero in DL
@@ -737,6 +779,10 @@ class UdpServer(threading.Thread):
 
       deviceStatus['boilerOn'] = boilerHeating
       deviceStatus['dhwMode'] = dhwMode
+      # Raw OpenTherm flag bytes. Observed: otFlags1 bit5 = flame on, bit6 = DHW demand;
+      # otFlags2 bit0 = the thermostat requests heating, bit7 = boiler active (CH or DHW)
+      deviceStatus['otFlags1'] = otFlags1
+      deviceStatus['otFlags2'] = otFlags2
 
       otUnk1, otUnk2, tFLO, otUnk4, tdH, tESt, otUnk7, otUnk8, otUnk9, otUnk10 = unpack('<hhhhhhhhhh')
 
@@ -1052,8 +1098,21 @@ class UdpServer(threading.Thread):
         else:
           SignalCSeq(deviceStatus,cseq,value)
 
+    elif wrapper.msgType==MsgId.OPENTHERM and msgLen==12:
+      # OpenTherm frame from the boiler, answer to send_OPENTHERM
+      cseq, unk1, unk2, deviceid = unpack('<BBHI')
+      ot_type, data_id, hi, lo = unpack('<BBBB')
+      deviceStatus = getDeviceStatus(deviceid)
+      deviceStatus.setdefault('ot', {})[data_id] = {'type': ot_type, 'hi': hi, 'lo': lo,
+                                                     'u16': (hi << 8) | lo, 'ts': int(time.time())}
+      if data_id in (11, 13):   # indexed: hi = index, lo = value
+        deviceStatus.setdefault('ot_indexed', {}).setdefault(data_id, {})[hi] = {
+          'type': ot_type, 'value': lo, 'ts': int(time.time())}
+      logger.info(f'OpenTherm id={data_id} type={ot_type} value=0x{hi:02x}{lo:02x}')
+
     else:
       logger.warn(f'Unhandled message {wrapper.msgType}')
+      logger.warning(f'RAW msgType=0x{wrapper.msgType:02x} response={wrapper.response} len={msgLen}: {payload.hex()}')
 
     if unpack.getOffset()!=msgLen:
       # Check we have consumed the complete message we received

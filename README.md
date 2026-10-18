@@ -30,7 +30,7 @@ This project is currently only a **proof-of-concept** implementation. Use at you
 
 It does not yet support:
  - Multiple thermostats
- - OpenTherm parameters when connected via OT
+ - OpenTherm parameters when connected via OT (partly: see "OpenTherm pass-through" below)
  - There is no authentication on the rest api
 
 Note: that CORS (Cross-origin resource sharing) headers are set on the server.
@@ -70,3 +70,23 @@ You can then use the rest api to query the state, for example (replace 192.168.0
  - Get the state of the thermostat: `curl http://192.168.0.10/api/v1.0/devices/<deviceid>/rooms/<roomid>`
  - Set T3 temperature (to 19.2degC): `curl http://192.168.0.10/api/v1.0/devices/<deviceid>/rooms/<roomid>/t3 -H "Content-Type: application/json" -X PUT -d 192`
  - ...
+
+## OpenTherm pass-through
+
+When the wifi box is connected to the boiler via OpenTherm, the cloud can send OpenTherm frames to
+the boiler through the wifi box (message type 0x0e). The BeSMART app uses this for its boiler
+information screen (modulation, return/flue temperature, operating hours, ...). BeSIM exposes it:
+
+ - Ask the boiler for one OpenTherm data id, e.g. 17 (relative modulation): `curl -X PUT http://192.168.0.10/api/v1.0/devices/<deviceid>/ot/17`
+ - Read the answers received so far: `curl http://192.168.0.10/api/v1.0/devices/<deviceid>/ot`
+   - `type` is the OpenTherm message type of the answer: 4 READ-ACK, 5 WRITE-ACK, 6 DATA-INVALID, 7 UNKNOWN-DATA-ID
+   - `hi`/`lo`/`u16` is the data value; its format depends on the data id (f8.8 for temperatures and modulation, s16 for the flue temperature, ...)
+ - Indexed data ids (11 = transparent slave parameters, 13 = fault history buffer) take the index in `hi`: `curl -X PUT "http://192.168.0.10/api/v1.0/devices/<deviceid>/ot/11?hi=22"`, answers per index: `curl http://192.168.0.10/api/v1.0/devices/<deviceid>/ot/11`
+ - Writing (`&lo=<value>&write=1`) sends a WRITE-DATA frame. Boiler parameters are normally set by a service technician - only write what you understand.
+
+Notes:
+ - The wifi box fits these requests between its own OpenTherm traffic and often does not answer the first time: repeat a request (about once a second, a few times) until the answer arrives.
+ - Do not flood it: with many requests in a short time the wifi box stops sending its status reports for a minute or so.
+ - Examples of data ids answered by a Beretta MySmart 28 C.S.I.: 17 modulation (%), 25 flow and 28 return temperature, 33 flue temperature, 10 number of transparent slave parameters, 12/13 fault history, 48/49 DHW/CH setpoint bounds, 56 DHW setpoint, 57 max CH setpoint.
+
+Message type 0x0f returns the fault/event history (shown as "Error codes" in the app). There is also a read-only probe for exploring other message types: `curl -X PUT http://192.168.0.10/api/v1.0/devices/<deviceid>/probe/<msgtype>`; replies to message types BeSIM does not handle are logged raw.
