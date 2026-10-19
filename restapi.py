@@ -1,3 +1,4 @@
+import struct
 from flask import Flask, request
 from flask_restful import reqparse, abort, Api, Resource
 from flask_cors import CORS
@@ -93,8 +94,12 @@ def getWebTemperature():
 @app.route('/BeSMART_test_on_cloudwarm/v1/api/gateway/boilers/records', methods=['POST'])
 def postBoilerRecords():
   logger.debug(f'{request.args}')
-  data = request.json
+  # The wifi box does not send a JSON content type, so request.json fails (415), and nothing was
+  # returned (500) - the box then keeps resending the record. Accept and log it.
+  data = request.get_json(force=True, silent=True)
+  logger.info(f"boiler record: {data if data is not None else request.get_data(as_text=True)[:300]}")
   # @todo do something with the POSTed data
+  return {}, 200
 
 #
 #
@@ -211,6 +216,32 @@ class TimeResource(Resource):
     else:
       return { 'message' : 'OK' }, 200
 
+class OpenThermResource(Resource):
+  # GET /api/v1.0/devices/<id>/ot           - last OpenTherm answers {data id: {type, hi, lo, u16, ts}}
+  # GET /api/v1.0/devices/<id>/ot/<dataid>  - answers of an indexed data id {index: {type, value, ts}}
+  # PUT /api/v1.0/devices/<id>/ot/<dataid>?hi=<n>&lo=<n>[&write=1] - send one OpenTherm frame
+  def get(self, deviceid, dataid=None):
+    if dataid is not None:
+      return getDeviceStatus(deviceid).get('ot_indexed', {}).get(dataid, {}), 200
+    return getDeviceStatus(deviceid).get('ot', {}), 200
+
+  def put(self, deviceid, dataid):
+    device = getDeviceStatus(deviceid)
+    hi, lo = int(request.args.get('hi', 0)), int(request.args.get('lo', 0))
+    write = request.args.get('write') == '1'
+    getUdpServer().send_OPENTHERM(device['addr'], deviceid, dataid, hi, lo, write)
+    return { 'message' : 'sent' }, 200
+
+class ProbeResource(Resource):
+  # PUT /api/v1.0/devices/<id>/probe/<msgtype> - read-only probe of a message type (send_PROBE);
+  # optional JSON {"room": <roomid>} appends the room id. Unhandled replies are logged as RAW ...
+  def put(self, deviceid, msgtype):
+    data = request.get_json(force=True, silent=True) or {}
+    extra = struct.pack('<I', int(data['room'])) if data.get('room') else b''
+    device = getDeviceStatus(deviceid)
+    cseq = getUdpServer().send_PROBE(device['addr'], device, deviceid, msgtype, extra)
+    return { 'message' : 'sent', 'cseq' : cseq }, 200
+
 class OutsideTempResource(Resource):
   def put(self, deviceid):
     data = request.json
@@ -254,6 +285,8 @@ api.add_resource(Rooms,'/api/v1.0/devices/<int:deviceid>/rooms', endpoint = 'roo
 api.add_resource(Room,'/api/v1.0/devices/<int:deviceid>/rooms/<int:roomid>', endpoint = 'room')
 
 api.add_resource(TimeResource,'/api/v1.0/devices/<int:deviceid>/time', endpoint = 'time')
+api.add_resource(OpenThermResource, '/api/v1.0/devices/<int:deviceid>/ot', '/api/v1.0/devices/<int:deviceid>/ot/<int:dataid>', endpoint = 'ot')
+api.add_resource(ProbeResource, '/api/v1.0/devices/<int:deviceid>/probe/<int:msgtype>', endpoint = 'probe')
 api.add_resource(OutsideTempResource,'/api/v1.0/devices/<int:deviceid>/outsidetemp', endpoint = 'outsidetemp')
 
 api.add_resource(WriteableParamResource, '/api/v1.0/devices/<int:deviceid>/rooms/<int:roomid>/t1', endpoint = 't1', resource_class_kwargs = { 'param' : 't1', 'msgId' : MsgId.SET_T1 })
