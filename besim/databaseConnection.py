@@ -1,0 +1,83 @@
+import contextlib
+import logging
+import sqlite3
+from enum import Enum
+from typing import List, Union, Optional
+
+logger = logging.getLogger(__name__)
+
+
+class DatabaseType(Enum):
+    SQLITE3 = (1,)
+    UNSET = 2
+
+
+class DatabaseConnection:
+    def __init__(self, databaseType=None, databaseName=None):
+        self.databaseType = databaseType
+        self.databaseName = databaseName
+        self.conn = None
+
+    def connect(self):
+        if self.databaseName is not None and self.conn is None:
+            self.conn = sqlite3.connect(self.databaseName, autocommit=False)  # PEP 249 compliant Python3.12+
+        return self.conn
+
+    def close(self, commit=False):
+        if self.conn is not None:
+            self.conn.close()
+            self.conn = None
+
+    def getConn(self):
+        return self.conn
+
+    def getDatabaseType(self):
+        return self.databaseType
+
+    def commit(self):
+        if self.getConn() is not None:
+            self.getConn().commit()
+
+    def rollback(self):
+        if self.getConn() is not None:
+            self.getConn().rollback()
+
+    def run_sql(self, sql, values=None, log=False) -> Optional[List[dict]]:
+        if values is None:
+            values = ()
+        if log:
+            logger.info(sql)
+        if self.getConn() is not None:
+            with contextlib.closing(self.getConn().cursor()) as cursor:  # Use contextlib since sqlite3 cursors do not support __enter__
+                cursor.execute(sql, values)
+                if cursor.description is None:  # sqlite3 will not return anything on a create/insert etc
+                    result = None
+                else:
+                    cols = [x[0] for x in cursor.description]
+                    result = [dict(zip(cols, row)) for row in cursor.fetchall()]
+            self.getConn().commit()
+            if log:
+                logger.info(result)
+            return result
+
+        return None
+
+    def fetchmany(self, sql, values=None, log=False) -> Optional[List]:
+        return self.run_sql(sql, values, log)
+
+    def fetchone(self, sql, values=None, log=False):
+        rc = self.run_sql(sql, values, log)
+        if rc is not None and len(rc) > 0:
+            return rc[0]
+        return None
+
+    def truncate_tables(self, tables: Union[str, List[str]], log=False) -> Optional[List]:
+        if not isinstance(tables, list):
+            tables = [tables]
+        for table in tables:
+            if self.getDatabaseType() == DatabaseType.SQLITE3:
+                sql = f"delete from {table}"
+            else:
+                sql = f"truncate table {table}"
+            return self.run_sql(sql, log)
+        return None
