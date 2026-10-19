@@ -29,6 +29,10 @@ class Database(metaclass=Singleton):
     conn.run_sql(sql,log=self.log)
     sql = "create table if not exists besim_temperature(ts DATETIME, thermostat TEXT, temp NUMERIC, settemp NUMERIC, heating NUMERIC)"
     conn.run_sql(sql,log=self.log)
+    sql = "create index if not exists besim_outside_temperature_index on besim_outside_temperature(ts)"
+    conn.run_sql(sql,log=self.log)
+    sql = "create index if not exists besim_temperature_index on besim_temperature(ts)"
+    conn.run_sql(sql,log=self.log)
     if closeit:
       conn.close(commit=True)
 
