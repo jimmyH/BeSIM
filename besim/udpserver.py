@@ -740,7 +740,7 @@ class UdpServer(threading.Thread):
                 mode = byte2 >> 4
                 unk9 = byte2 & 0xF
                 byte3, byte4, unk13, tempcurve, heatingsetp = unpack("<BBHBB")
-                sensorinfluence = (byte3 >> 3) & 0xF
+                sensorinfluence = (byte3 >> 3) & 0x1F  # 0..20 in the BeSMART app: 5 bits
                 units = (byte3 >> 2) & 0x1
                 advance = (byte3 >> 1) & 0x1
                 lowbattery = byte3 & 0x1
