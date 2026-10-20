@@ -209,7 +209,16 @@ class Day(Resource):
         data = request.json
         val = data
         addr = getDeviceStatus(deviceid)["addr"]
-        new_val = getUdpServer().send_PROGRAM(addr, getDeviceStatus(deviceid), deviceid, roomid, dayid, val, response=0, write=1, wait=1)
+        getUdpServer().send_PROGRAM(addr, getDeviceStatus(deviceid), deviceid, roomid, dayid, val, response=0, write=1, wait=1)
+        # The WiFi box answers a program write with an uplink PROGRAM message carrying the stored
+        # program, but without a cseq, so there is nothing for WaitCSeq() to wait on. Poll the room
+        # status (updated by that answer) instead.
+        new_val = None
+        for _ in range(30):
+            new_val = getRoomStatus(deviceid, roomid)["days"].get(dayid)
+            if new_val == val:
+                break
+            time.sleep(0.2)
         if new_val != val:
             return {"message": "ERROR"}, 500
         return {"message": "OK"}, 200
